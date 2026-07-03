@@ -1,0 +1,3046 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart — Gestão de Propostas</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root,[data-theme="dark"]{
+  --bg:#0f1117;--bg2:#161b27;--bg3:#1e2438;--card:#1a2035;
+  --border:#2a3250;--border2:#3a4570;
+  --text:#e8ecf4;--muted:#7a85a8;--muted2:#4a5578;
+  --accent:#4f6ef7;--green:#3ecf8e;--yellow:#f5a623;--red:#e55;
+  --font:'Segoe UI',system-ui,sans-serif;--r:8px;
+  --topbar:49px; --kpi:130px; --count:26px;
+}
+[data-theme="light"]{
+  --bg:#f4f6fb;--bg2:#ffffff;--bg3:#eef1f7;--card:#ffffff;
+  --border:#d0d7e8;--border2:#b0bcda;
+  --text:#1a2035;--muted:#6272a4;--muted2:#8898c4;
+  --accent:#4f6ef7;--green:#1aaf6e;--yellow:#d97706;--red:#dc2626;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden}
+body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13px;display:flex;flex-direction:column}
+
+/* ── TOP BAR ── */
+.topbar{
+  height:var(--topbar);flex-shrink:0;
+  background:var(--bg2);border-bottom:1px solid var(--border);
+  padding:10px 20px;display:flex;align-items:center;justify-content:space-between;
+  z-index:200;
+}
+.logo{font-size:16px;font-weight:700;color:var(--accent)}
+.logo small{color:var(--muted);font-weight:400;font-size:12px;margin-left:8px}
+.top-nav{display:flex;gap:4px;margin-left:14px}
+.nav-btn{padding:5px 13px;border-radius:var(--r);border:none;cursor:pointer;
+  font-size:12px;font-weight:600;font-family:var(--font);background:transparent;color:var(--muted);transition:.15s}
+.nav-btn:hover{color:var(--text);background:var(--bg3)}
+.nav-btn.active{background:var(--accent);color:#fff}
+#tab-itau.active{background:#f97316}
+#tab-bradesco.active{background:#e55}
+#tab-santander.active{background:#e55;color:#fff!important}
+#tab-contatos.active{background:#a78bfa}
+.top-actions{display:flex;gap:6px}
+
+/* ── BOTÕES ── */
+.btn{padding:6px 13px;border-radius:var(--r);border:none;cursor:pointer;
+  font-size:12px;font-weight:600;transition:.15s;font-family:var(--font);
+  display:inline-flex;align-items:center;gap:5px}
+.btn-primary{background:var(--accent);color:#fff}.btn-primary:hover{background:#3a57d4}
+.btn-ghost{background:transparent;color:var(--muted);border:1px solid var(--border)}
+.btn-ghost:hover{color:var(--text);border-color:var(--border2)}
+.btn-sm{padding:4px 10px;font-size:11px}
+.btn-danger{background:rgba(238,85,85,.15);color:var(--red);border:1px solid rgba(238,85,85,.3)}
+.btn-danger:hover{background:var(--red);color:#fff}
+.btn-success{background:var(--green);color:#0f1117}.btn-success:hover{background:#2db87a}
+.btn-outline{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+.btn-outline:hover{background:var(--accent);color:#fff}
+
+/* ── VIEWS ── */
+.view{display:none;flex-direction:column;flex:1;overflow:hidden}
+.view.active{display:flex}
+
+/* ── KPI BAR ── */
+.kpi-bar{
+  flex-shrink:0;
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));
+  gap:8px;padding:10px 20px;
+}
+.kpi{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 14px}
+.kpi-label{color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px;line-height:1.3}
+.kpi-value{font-size:16px;font-weight:700;line-height:1.2}
+.kpi-sub{color:var(--muted);font-size:9px;margin-top:2px}
+.ca{color:var(--accent)}.cg{color:var(--green)}.cy{color:var(--yellow)}
+
+/* ── LAYOUT DA TABELA ──
+   Abordagem: div wrapper com display:flex + flex-direction:column
+   - .thead-fixed: div com a linha de headers+filtros (não rola)
+   - .tbody-scroll: div com overflow-y:auto que contém a tabela sem thead
+   Ambos com overflow-x sincronizado via JS
+*/
+.count-bar{flex-shrink:0;padding:3px 20px 4px;color:var(--muted);font-size:11px}
+
+.table-container{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  margin:0;
+}
+
+/* Wrapper horizontal — ambos os divs têm overflow-x:hidden e são sincronizados */
+.thead-scroll-wrap{
+  flex-shrink:0;
+  overflow-x:hidden; /* controlado via JS */
+  overflow-y:hidden;
+  background:var(--bg2);
+  border-bottom:2px solid var(--border2);
+}
+
+.tbody-scroll-wrap{
+  flex:1;
+  overflow-x:auto;
+  overflow-y:auto;
+}
+
+/* Tabela do thead */
+.thead-table{
+  width:100%;border-collapse:collapse;min-width:1800px;table-layout:fixed;
+}
+.thead-table th{
+  background:var(--bg2);padding:0;
+  white-space:nowrap;vertical-align:top;
+}
+.th-inner{display:flex;flex-direction:column}
+.th-lbl{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:7px 10px 4px;
+  color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.6px;
+  cursor:pointer;gap:4px;user-select:none;
+}
+.th-lbl:hover{color:var(--text)}
+.th-lbl.sorted{color:var(--accent)}
+.sort-ic{font-size:9px;opacity:.4;flex-shrink:0}
+.th-lbl.sorted .sort-ic{opacity:1}
+.th-lbl.no-sort{cursor:default}
+.th-flt{padding:0 6px 5px}
+.th-flt input,.th-flt select{
+  width:100%;background:var(--bg3);border:1px solid var(--border);
+  color:var(--text);border-radius:4px;padding:4px 7px;font-size:11px;
+  font-family:var(--font);outline:none;transition:.15s;
+}
+.th-flt input:focus,.th-flt select:focus{border-color:var(--accent)}
+.th-flt select option{background:var(--bg2)}
+
+/* Tabela do tbody */
+.tbody-table{
+  width:100%;border-collapse:collapse;min-width:1800px;table-layout:fixed;
+}
+tbody tr{border-bottom:1px solid var(--border);cursor:pointer;transition:background .08s}
+tbody tr:hover td{background:rgba(255,255,255,.025)}
+tbody tr.row-pos td{background:rgba(22,163,74,.15)!important}
+tbody tr.row-pos:hover td{background:rgba(22,163,74,.25)!important}
+tbody tr.row-contra td{background:rgba(124,58,237,.1)!important}
+tbody tr.row-contra:hover td{background:rgba(124,58,237,.18)!important}
+tbody td{
+  padding:7px 10px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;vertical-align:middle;max-width:0;
+}
+.td-act{display:flex;gap:4px;overflow:visible;max-width:none}
+
+/* ── EDIÇÃO INLINE ── */
+.cell-editable{cursor:cell}
+.cell-editable:hover{outline:1px solid var(--border2);background:rgba(79,110,247,.06)!important}
+.cell-editing{outline:2px solid var(--accent)!important;background:rgba(79,110,247,.08)!important}
+
+/* ── BADGES ── */
+/* ── SISTEMA DE CORES POR SIGNIFICADO ──
+   🔵 Azul     = recebido / em andamento
+   🟠 Laranja  = precisa de ação
+   🩵 Ciano    = em negociação
+   🟢 Verde    = positivo / enviado / concluído
+   🔴 Vermelho = negativo / não enviar
+   🟣 Roxo     = suspenso / jurídico pós-venda
+   🟡 Amarelo  = atenção / atípico
+   ⚪ Cinza    = neutro / informativo
+*/
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap}
+
+/* AZUL — recebido / em andamento */
+.c-azul{background:rgba(74,158,255,.18);color:#4a9eff}
+/* LARANJA — precisa de ação */
+.c-laranja{background:rgba(245,166,35,.2);color:#f5a623}
+/* CIANO — em negociação */
+.c-ciano{background:rgba(46,196,196,.2);color:#2ec4c4}
+.c-ciano-claro{background:rgba(46,196,196,.1);color:#67e8f9}
+/* VERDE — positivo / enviado / concluído */
+.c-verde{background:#16a34a;color:#fff;font-weight:700}
+.c-verde-forte{background:#15803d;color:#fff;font-weight:700}
+/* VERMELHO — negativo / não enviar */
+.c-vermelho{background:rgba(238,85,85,.18);color:#ff6b6b}
+/* ROXO — suspenso / jurídico */
+.c-roxo{background:#7c3aed;color:#fff;font-weight:700}
+.c-roxo-claro{background:rgba(124,58,237,.2);color:#c4b5fd;font-weight:600}
+/* AMARELO — atenção / atípico */
+.c-amarelo{background:rgba(250,204,21,.2);color:#fbbf24}
+/* CINZA — neutro */
+.c-cinza{background:rgba(122,133,168,.12);color:#9ca3af}
+.c-vab-red{background:rgba(220,38,38,.15);color:#f87171;border:1px solid rgba(220,38,38,.3);font-weight:600}
+/* SEM BADGE — texto puro */
+.c-texto{color:var(--text);font-weight:400;background:none;padding:0!important}
+.c-muted{color:var(--muted);font-weight:400;background:none}
+.des-v{color:var(--green);font-weight:700}
+.des-a{color:var(--yellow);font-weight:700}
+.des-neg{color:#00ff88;font-weight:700;text-shadow:0 0 8px rgba(0,255,136,.5)}
+.dl-exp{color:#ff8fa3;font-weight:600}
+.dl-hj{color:var(--red);font-weight:700}
+.dl-soo{color:var(--yellow);font-weight:600}
+.link-im{color:var(--accent);text-decoration:none;font-size:12px}
+.link-im:hover{text-decoration:underline}
+
+/* ── EMPTY ── */
+.empty-st{text-align:center;padding:60px 20px;color:var(--muted)}
+.empty-st h3{color:var(--text);margin:12px 0 6px}
+
+/* ── SIDE PANEL (estilo ClickUp) ── */
+.side-overlay{
+  display:none;position:fixed;inset:0;z-index:400;
+}
+.side-overlay.open{display:block}
+.side-backdrop{
+  position:absolute;inset:0;background:rgba(0,0,0,.45);cursor:pointer;
+}
+.side-panel{
+  position:absolute;top:0;right:0;bottom:0;
+  width:980px;max-width:97vw;
+  background:var(--bg2);border-left:1px solid var(--border);
+  display:flex;flex-direction:column;
+  transform:translateX(100%);transition:transform .25s cubic-bezier(.4,0,.2,1);
+}
+.side-overlay.open .side-panel{transform:translateX(0)}
+
+/* Header do painel */
+.sp-header{
+  display:flex;align-items:center;gap:12px;
+  padding:14px 20px;border-bottom:1px solid var(--border);flex-shrink:0;
+}
+.sp-title{flex:1;font-size:15px;font-weight:700;color:var(--text);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sp-title small{color:var(--muted);font-weight:400;font-size:12px;margin-left:6px}
+
+/* Corpo do painel: coluna de campos + activity */
+.sp-body{flex:1;display:grid;grid-template-columns:1fr 320px;overflow:hidden}
+.sp-fields{padding:16px 20px;overflow-y:auto;border-right:1px solid var(--border);min-width:0}
+.sp-activity{display:flex;flex-direction:column;overflow:hidden}
+.sp-act-title{padding:14px 16px 10px;font-size:13px;font-weight:600;flex-shrink:0;border-bottom:1px solid var(--border)}
+.sp-act-log{flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:10px}
+.sp-act-inp{flex-shrink:0;padding:10px 14px;border-top:1px solid var(--border)}
+
+/* Sections */
+.sp-section{margin-bottom:18px}
+.sp-section-title{
+  font-size:10px;text-transform:uppercase;letter-spacing:1px;
+  color:var(--accent);margin-bottom:8px;display:flex;align-items:center;gap:6px;
+}
+.sp-section-title::after{content:'';flex:1;height:1px;background:var(--border)}
+
+/* Campo estilo ClickUp: ícone + label + valor */
+.cp-row{
+  display:grid;grid-template-columns:150px 1fr;
+  align-items:center;min-height:36px;
+  border-radius:6px;padding:2px 6px;transition:background .1s;
+}
+.cp-row:hover{background:rgba(255,255,255,.03)}
+.cp-lbl{
+  display:flex;align-items:center;gap:7px;
+  color:var(--muted);font-size:12px;flex-shrink:0;
+}
+.cp-icon{width:14px;height:14px;border-radius:3px;background:var(--bg3);
+  border:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:9px}
+.cp-val{display:flex;align-items:center;width:100%;min-width:0;overflow:hidden}
+.cp-inp{
+  background:transparent;border:1px solid transparent;color:var(--text);
+  border-radius:4px;padding:4px 8px;font-size:13px;font-family:var(--font);
+  outline:none;transition:.15s;width:100%;
+}
+.cp-inp:hover{border-color:var(--border);background:var(--bg3)}
+.cp-inp:focus{border-color:var(--accent);background:var(--bg3)}
+.cp-inp[readonly]{opacity:.5;cursor:not-allowed}
+.cp-inp[readonly]:hover{border-color:transparent;background:transparent}
+.cp-inp-val{
+  background:var(--bg3)!important;
+  border:1px solid var(--border)!important;
+  font-size:13px!important;
+  font-weight:600!important;
+  color:var(--text)!important;
+  padding:6px 10px!important;
+  width:100%!important;
+  min-width:0!important;
+}
+.cp-inp-val:hover{border-color:var(--border2)!important}
+.cp-inp-val:focus{border-color:var(--accent)!important;background:var(--bg3)!important}
+.cp-sel{
+  background:transparent;border:1px solid transparent;color:var(--text);
+  border-radius:4px;padding:4px 8px;font-size:13px;font-family:var(--font);
+  outline:none;cursor:pointer;width:100%;transition:.15s;
+}
+.cp-sel:hover{border-color:var(--border);background:var(--bg3)}
+.cp-sel:focus{border-color:var(--accent);background:var(--bg3)}
+.cp-sel option{background:var(--bg2)}
+.cp-val-text{padding:4px 8px;font-size:13px;color:var(--text)}
+
+/* Grid de 2 colunas dentro de sp-fields */
+.cp-grid2{display:grid;grid-template-columns:1fr 1fr;gap:0;min-width:0}
+.cp-grid2 .cp-row{min-width:0}
+.cp-grid2 .cp-val{min-width:0;overflow:hidden}
+
+/* Activity */
+.act-auto{
+  font-size:11px;color:var(--muted);
+  display:flex;align-items:baseline;gap:6px;padding:2px 0;
+}
+.act-auto::before{content:'•';color:var(--border2)}
+.act-ts{font-size:10px;color:var(--muted2)}
+.act-comment{display:flex;gap:10px;align-items:flex-start}
+.act-avatar{width:28px;height:28px;border-radius:50%;background:var(--accent);
+  display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:700;flex-shrink:0;color:#fff}
+.act-bubble{background:var(--bg3);border:1px solid var(--border);
+  border-radius:8px;padding:8px 12px;flex:1}
+.act-bubble p{font-size:13px;line-height:1.5;word-break:break-word}
+.act-bubble .act-ts{margin-top:4px;display:block}
+
+/* Input comentário */
+.act-inp-row{display:flex;gap:8px;align-items:flex-start}
+.act-inp-wrap{flex:1;display:flex;flex-direction:column;gap:6px}
+#sp-hist-inp{
+  width:100%;background:var(--bg3);border:1px solid var(--border);
+  color:var(--text);border-radius:var(--r);padding:8px 10px;
+  font-size:12px;font-family:var(--font);outline:none;resize:none;
+  min-height:38px;max-height:120px;overflow-y:auto;transition:.15s;
+}
+#sp-hist-inp:focus{border-color:var(--accent)}
+
+/* ── MODAL EMAIL ── */
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.78);
+  z-index:500;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto}
+.overlay.open{display:flex}
+.modal{background:var(--bg2);border:1px solid var(--border);border-radius:12px;
+  width:100%;max-width:640px;margin:auto}
+.modal-hd{display:flex;align-items:center;justify-content:space-between;
+  padding:16px 20px 12px;border-bottom:1px solid var(--border)}
+.modal-title{font-size:15px;font-weight:700}
+.modal-close{background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:4px;line-height:1}
+.modal-close:hover{color:var(--text)}
+.modal-body{padding:16px 20px}
+.modal-ft{display:flex;gap:8px;justify-content:flex-end;padding:12px 20px;border-top:1px solid var(--border)}
+.modal-sm{max-width:460px}
+.fg{display:flex;flex-direction:column;gap:5px}
+.fg label{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.6px}
+.fg input,.fg select,.fg textarea{
+  background:var(--bg3);border:1px solid var(--border);color:var(--text);
+  border-radius:var(--r);padding:8px 12px;font-size:13px;font-family:var(--font);
+  outline:none;transition:.15s;width:100%}
+.fg input:focus,.fg select:focus,.fg textarea:focus{border-color:var(--accent)}
+.fg textarea{resize:vertical;min-height:60px}
+.fg select option{background:var(--bg3)}
+.email-tabs{display:flex;gap:4px;background:var(--bg3);padding:4px;border-radius:var(--r);margin-bottom:12px}
+.email-tab{flex:1;padding:6px;border-radius:6px;border:none;background:none;
+  color:var(--muted);font-size:11px;font-weight:600;cursor:pointer;text-align:center;
+  font-family:var(--font);transition:.15s}
+.email-tab.active{background:var(--accent);color:#fff}
+.email-prev{background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);
+  padding:14px;font-size:13px;line-height:1.7;white-space:pre-wrap;max-height:320px;overflow-y:auto}
+
+/* ── AUTOCOMPLETE ── */
+.ac-wrap{position:relative;width:100%}
+.ac-list{position:absolute;top:100%;left:0;right:0;background:var(--bg2);
+  border:1px solid var(--border);border-radius:var(--r);z-index:600;
+  max-height:180px;overflow-y:auto;display:none}
+.ac-list.open{display:block}
+.ac-item{padding:8px 12px;cursor:pointer;font-size:13px;display:flex;flex-direction:column;gap:2px}
+.ac-item:hover,.ac-item.sel{background:var(--bg3)}
+.ac-item small{color:var(--muted);font-size:11px}
+
+/* ── CONTATOS ── */
+.contacts-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;padding:20px;overflow-y:auto;flex:1}
+.c-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;transition:.15s}
+.c-card:hover{border-color:var(--border2)}
+.c-name{font-weight:600;margin-bottom:4px}
+.c-email{color:var(--accent);font-size:12px;text-decoration:none}
+.c-meta{color:var(--muted);font-size:11px;margin-top:5px}
+.c-actions{display:flex;gap:6px;margin-top:10px}
+
+/* ── TOAST ── */
+.toast{position:fixed;bottom:24px;right:24px;padding:10px 18px;border-radius:var(--r);
+  font-weight:600;font-size:13px;z-index:999;transform:translateY(80px);
+  opacity:0;transition:.25s;background:var(--green);color:#0f1117}
+.toast.show{transform:translateY(0);opacity:1}
+.toast.err{background:var(--red);color:#fff}
+
+/* ── IA ── */
+.ia-drop{border:2px dashed var(--border);border-radius:10px;padding:32px;
+  text-align:center;cursor:pointer;transition:.2s}
+.ia-drop:hover,.ia-drop.over{border-color:var(--accent);background:rgba(79,110,247,.05)}
+.ia-drop p{color:var(--muted);font-size:13px;margin-top:8px}
+.ia-st{margin-top:12px;font-size:13px;color:var(--muted);text-align:center;min-height:20px}
+.ia-spin{display:inline-block;width:13px;height:13px;border:2px solid var(--border);
+  border-top-color:var(--accent);border-radius:50%;
+  animation:spin .7s linear infinite;vertical-align:middle;margin-right:5px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.email-group-btn{padding:6px 12px;border-radius:var(--r);border:1px solid var(--border);background:transparent;color:var(--muted);font-size:11px;font-weight:600;cursor:pointer;font-family:var(--font);transition:.15s;white-space:nowrap}
+.email-group-btn:hover{color:var(--text);border-color:var(--border2)}
+.email-group-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.email-subtab{padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:11px;cursor:pointer;font-family:var(--font);transition:.15s;white-space:nowrap}
+.email-subtab:hover{color:var(--text);border-color:var(--border2)}
+.email-subtab.active{background:var(--bg2);color:var(--text);border-color:var(--border2);font-weight:600}
+.email-prev{background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:14px;font-size:13px;line-height:1.7;white-space:pre-wrap;max-height:340px;overflow-y:auto}
+
+/* ── FILTRO DE PERÍODO (daterange) ── */
+.dr-wrap{display:flex;flex-direction:column;gap:2px;width:100%}
+.dr-wrap input[type=date]{
+  width:100%;background:var(--bg3);border:1px solid var(--border);
+  color:var(--text);border-radius:4px;padding:3px 5px;font-size:10px;
+  font-family:var(--font);outline:none;transition:.15s;
+}
+.dr-wrap input[type=date]:focus{border-color:var(--accent)}
+.dr-label{font-size:9px;color:var(--muted);padding-left:2px}
+
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px}
+
+/* ── SELECT COLORIDO CUSTOMIZADO ── */
+.cs-wrap{position:relative;width:100%}
+.cs-display{
+  display:flex;align-items:center;gap:7px;
+  background:transparent;border:1px solid transparent;
+  border-radius:4px;padding:4px 8px;cursor:pointer;
+  font-size:13px;font-family:var(--font);color:var(--text);
+  transition:.15s;width:100%;min-height:30px;
+}
+.cs-display:hover{border-color:var(--border);background:var(--bg3)}
+.cs-display .cs-arrow{margin-left:auto;color:var(--muted);font-size:10px;flex-shrink:0}
+.cs-dropdown{
+  position:fixed;background:var(--bg2);border:1px solid var(--border);
+  border-radius:var(--r);z-index:600;min-width:220px;max-width:320px;
+  box-shadow:0 8px 28px rgba(0,0,0,.55);overflow:hidden;display:none;
+}
+.cs-dropdown.open{display:block}
+.cs-option{
+  display:flex;align-items:center;gap:9px;
+  padding:8px 12px;cursor:pointer;font-size:12px;
+  transition:background .1s;border-bottom:1px solid rgba(255,255,255,.04);
+}
+.cs-option:last-child{border-bottom:none}
+.cs-option:hover{background:var(--bg3)}
+.cs-option.selected{background:rgba(79,110,247,.1)}
+.cs-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.cs-label{flex:1;color:var(--text)}
+.cs-check{color:var(--accent);font-size:12px;flex-shrink:0}
+
+/* Versão compacta para filtros/inline */
+.cs-display.sm{padding:3px 7px;font-size:11px;min-height:24px}
+.cs-option.sm{padding:6px 10px;font-size:11px}
+
+/* ── FILTER DROPDOWN (checkboxes estilo Sheets) ── */
+.flt-wrap{position:relative;width:100%}
+.flt-btn{
+  width:100%;background:var(--bg3);border:1px solid var(--border);
+  color:var(--text);border-radius:4px;padding:4px 7px;font-size:11px;
+  font-family:var(--font);outline:none;cursor:pointer;text-align:left;
+  display:flex;align-items:center;justify-content:space-between;gap:4px;
+  transition:.15s;white-space:nowrap;overflow:hidden;
+}
+.flt-btn:hover,.flt-btn.open{border-color:var(--accent);background:var(--bg2)}
+.flt-btn-arrow{flex-shrink:0;opacity:.5;font-size:9px}
+.flt-dropdown{
+  position:fixed;/* fixed para sair do overflow da tabela */
+  background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);
+  z-index:500;min-width:200px;max-width:320px;
+  box-shadow:0 8px 24px rgba(0,0,0,.5);
+  display:none;
+}
+.flt-dropdown.open{display:block}
+.flt-search{
+  padding:8px;border-bottom:1px solid var(--border);
+}
+.flt-search input{
+  width:100%;background:var(--bg3);border:1px solid var(--border);
+  color:var(--text);border-radius:4px;padding:5px 8px;font-size:12px;
+  font-family:var(--font);outline:none;
+}
+.flt-search input:focus{border-color:var(--accent)}
+.flt-actions{
+  display:flex;gap:0;border-bottom:1px solid var(--border);
+}
+.flt-action{
+  flex:1;padding:5px 8px;font-size:11px;color:var(--accent);
+  background:none;border:none;cursor:pointer;font-family:var(--font);
+  transition:.15s;
+}
+.flt-action:hover{background:var(--bg3)}
+.flt-action+.flt-action{border-left:1px solid var(--border)}
+.flt-list{max-height:200px;overflow-y:auto;padding:4px 0}
+.flt-item{
+  display:flex;align-items:center;gap:8px;
+  padding:5px 10px;cursor:pointer;font-size:12px;
+  transition:background .1s;
+}
+.flt-item:hover{background:var(--bg3)}
+.flt-item input[type=checkbox]{
+  accent-color:var(--accent);width:14px;height:14px;cursor:pointer;flex-shrink:0;
+}
+.flt-item label{cursor:pointer;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div style="display:flex;align-items:center">
+    <div class="logo">Smart <small>Gestão de Propostas</small></div>
+    <div class="top-nav">
+      <button class="nav-btn active" id="tab-geral"      onclick="setAba('geral')">Geral</button>
+      <button class="nav-btn"        id="tab-itau"       onclick="setAba('itau')">Itaú</button>
+      <button class="nav-btn"        id="tab-bradesco"   onclick="setAba('bradesco')">Bradesco</button>
+      <button class="nav-btn"        id="tab-santander"  onclick="setAba('santander')">Santander</button>
+      <button class="nav-btn"        id="tab-contatos"   onclick="setAba('contatos')">Contatos</button>
+    </div>
+  </div>
+  <div class="top-actions">
+    <button class="btn btn-ghost btn-sm" onclick="document.getElementById('json-mass-input').click()" title="Importar arquivo JSON gerado pelo Claude">⬆ JSON</button>
+    <button class="btn btn-ghost btn-sm" onclick="exportXLSX()" title="Exportar Excel formatado">⬇ Excel</button>
+    <button class="btn btn-outline btn-sm" onclick="openJSONModal()" title="Cole aqui o JSON que o Claude extraiu no chat">📋 Importar do Chat</button>
+    <button class="btn btn-ghost btn-sm" onclick="toggleLegenda()" id="legenda-btn" title="Legenda de cores">🎨</button>
+    <button class="btn btn-primary" onclick="openNewPanel()">+ Nova Proposta</button>
+    <button class="btn btn-danger btn-sm" onclick="resetTudo()" title="Apagar TODOS os dados" style="opacity:.5;font-size:10px;padding:3px 8px">🗑 Reset</button>
+  </div>
+</div>
+
+<!-- ══ VIEW: TABELA (compartilhada por todas as abas) ══ -->
+<div class="view active" id="view-tabela">
+  <!-- Badge da aba atual -->
+  <div style="padding:6px 20px 0;flex-shrink:0;display:flex;align-items:center;gap:8px">
+    <span id="aba-badge" style="font-size:11px;font-weight:700;padding:2px 10px;border-radius:20px;background:rgba(79,110,247,.15);color:var(--accent)">GERAL</span>
+    <span id="aba-desc" style="font-size:11px;color:var(--muted)">Todas as propostas</span>
+  </div>
+  <div class="kpi-bar" id="kpis"></div>
+  <div class="count-bar" id="count-bar"></div>
+  <div class="table-container" id="table-container">
+    <div class="thead-scroll-wrap" id="thead-wrap">
+      <table class="thead-table" id="thead-table">
+        <colgroup id="col-group-head"></colgroup>
+        <thead id="thead-main"></thead>
+      </table>
+    </div>
+    <div class="tbody-scroll-wrap" id="tbody-wrap" onscroll="syncScroll(this)">
+      <table class="tbody-table" id="tbody-table">
+        <colgroup id="col-group-body"></colgroup>
+        <tbody id="tbody"></tbody>
+      </table>
+      <div class="empty-st" id="empty-st" style="display:none">
+        <div style="font-size:36px">📋</div>
+        <h3>Nenhuma proposta encontrada</h3>
+        <p>Ajuste os filtros ou adicione uma nova proposta.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ VIEW: CONTATOS ══ -->
+<div class="view" id="view-contatos" style="flex-direction:column;overflow:hidden">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;flex-shrink:0">
+    <div>
+      <span style="font-size:15px;font-weight:700">Contatos</span>
+      <span style="color:var(--muted);font-size:12px;margin-left:8px" id="contacts-count"></span>
+    </div>
+    <div style="display:flex;gap:8px">
+      <input type="text" id="search-c" placeholder="🔍 Buscar..." oninput="renderContatos()"
+        style="background:var(--bg3);border:1px solid var(--border);color:var(--text);
+          border-radius:var(--r);padding:7px 12px;font-size:12px;font-family:var(--font);
+          outline:none;width:210px">
+      <button class="btn btn-primary btn-sm" onclick="openContatoModal()">+ Novo contato</button>
+    </div>
+  </div>
+  <div class="contacts-grid" id="contacts-grid"></div>
+  <div class="empty-st" id="contacts-empty" style="display:none;padding:40px">
+    <div style="font-size:36px">👤</div><h3>Nenhum contato</h3>
+    <button class="btn btn-primary" style="margin-top:14px" onclick="openContatoModal()">+ Novo contato</button>
+  </div>
+</div>
+
+<!-- ══ SIDE PANEL PROPOSTA ══ -->
+<div class="side-overlay" id="side-overlay">
+  <div class="side-backdrop" onclick="closePanel()"></div>
+  <div class="side-panel" id="side-panel">
+
+    <!-- Header -->
+    <div class="sp-header">
+      <button onclick="closePanel()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;line-height:1;padding:2px 6px">✕</button>
+      <div class="sp-title" id="sp-title">Nova Proposta</div>
+      <!-- Mover para aba -->
+      <div id="sp-mover-wrap" style="position:relative;display:none">
+        <button class="btn btn-ghost btn-sm" onclick="toggleMoverMenu()" id="sp-mover-btn">📂 Mover para...</button>
+        <div id="sp-mover-menu" style="display:none;position:absolute;top:110%;right:0;background:var(--bg2);
+          border:1px solid var(--border);border-radius:var(--r);min-width:160px;z-index:600;
+          box-shadow:0 8px 24px rgba(0,0,0,.5);overflow:hidden">
+        </div>
+      </div>
+      <button class="btn btn-ghost btn-sm" id="sp-email-btn" onclick="openEmailFromPanel()" style="display:none">✉ E-mail</button>
+      <button class="btn btn-danger btn-sm" id="sp-delete-btn" onclick="deleteFromPanel()" style="display:none" title="Excluir proposta">🗑 Excluir</button>
+      <button class="btn btn-primary btn-sm" onclick="saveProposta()">Salvar</button>
+    </div>
+
+    <!-- Corpo -->
+    <div class="sp-body">
+
+      <!-- CAMPOS -->
+      <div class="sp-fields" id="sp-fields">
+
+        <!-- Identificação -->
+        <div class="sp-section">
+          <div class="sp-section-title">Identificação</div>
+          <div class="cp-row"><div class="cp-lbl"><span class="cp-icon">📌</span>Status</div>
+            <div class="cp-val"><div id="cs-status" class="cs-wrap"></div></div></div>
+          <div class="cp-row"><div class="cp-lbl"><span class="cp-icon">🏦</span>Credor</div>
+            <div class="cp-val"><input type="text" id="mp-credor" class="cp-inp" placeholder="Ex: Inter, Bradesco..."></div></div>
+          <div class="cp-row"><div class="cp-lbl"><span class="cp-icon">🤝</span>Parceiro?</div>
+            <div class="cp-val"><select id="mp-parceiro" class="cp-sel">
+              <option value="Sim">Sim</option><option value="Não">Não</option>
+            </select></div></div>
+          <div class="cp-row"><div class="cp-lbl"><span class="cp-icon">📤</span>Enviado ao credor</div>
+            <div class="cp-val"><div id="cs-enviado" class="cs-wrap"></div></div></div>
+          <div class="cp-row"><div class="cp-lbl"><span class="cp-icon">📅</span>Data de envio</div>
+            <div class="cp-val"><input type="date" id="mp-dataEnvio" class="cp-inp"></div></div>
+          <div class="cp-row"><div class="cp-lbl"><span class="cp-icon">↩</span>Retorno ao interessado</div>
+            <div class="cp-val"><div id="cs-retint" class="cs-wrap"></div></div></div>
+        </div>
+
+        <!-- Interessado -->
+        <div class="sp-section">
+          <div class="sp-section-title">Interessado</div>
+          <div class="cp-row"><div class="cp-lbl"><span class="cp-icon">👤</span>Nome</div>
+            <div class="cp-val">
+              <div class="ac-wrap">
+                <input type="text" id="mp-nome" class="cp-inp" placeholder="Buscar ou inserir..."
+                  oninput="acSearch()" onkeydown="acKey(event)" autocomplete="off">
+                <div class="ac-list" id="ac-list"></div>
+              </div>
+            </div></div>
+          <div class="cp-row"><div class="cp-lbl"><span class="cp-icon">✉</span>E-mail</div>
+            <div class="cp-val"><input type="email" id="mp-email" class="cp-inp" placeholder="email@exemplo.com"></div></div>
+        </div>
+
+        <!-- Imóvel -->
+        <div class="sp-section">
+          <div class="sp-section-title">Imóvel</div>
+          <div class="cp-row"><div class="cp-lbl"><span class="cp-icon">🏠</span>Nome / Local</div>
+            <div class="cp-val"><input type="text" id="mp-nomeIm" class="cp-inp" placeholder="Ex: Casa em São Leopoldo, RS"></div></div>
+          <div class="cp-row"><div class="cp-lbl"><span class="cp-icon">🔗</span>Link do leilão</div>
+            <div class="cp-val"><input type="text" id="mp-link" class="cp-inp" placeholder="https://..."></div></div>
+          <div class="cp-row"><div class="cp-lbl"><span class="cp-icon">📋</span>Matrícula</div>
+            <div class="cp-val"><input type="text" id="mp-mat" class="cp-inp" placeholder="Ex: 52.453 - 7º CRI/SP"></div></div>
+        </div>
+
+        <!-- Valores -->
+        <div class="sp-section">
+          <div class="sp-section-title">Valores</div>
+          <!-- Linha 1: Vl. Leilão + Vl. Proposta -->
+          <div class="cp-grid2">
+            <div class="cp-row">
+              <div class="cp-lbl"><span class="cp-icon">💰</span>Vl. Leilão</div>
+              <div class="cp-val"><input type="text" id="mp-vlL" class="cp-inp cp-inp-val" placeholder="R$ 0,00" oninput="calcAuto()"></div>
+            </div>
+            <div class="cp-row">
+              <div class="cp-lbl"><span class="cp-icon">💵</span>Vl. Proposta</div>
+              <div class="cp-val"><input type="text" id="mp-vlP" class="cp-inp cp-inp-val" placeholder="R$ 0,00" oninput="calcAuto()"></div>
+            </div>
+          </div>
+          <!-- Linha 2: Deságio (full width) -->
+          <div class="cp-row">
+            <div class="cp-lbl"><span class="cp-icon">📉</span>Deságio %</div>
+            <div class="cp-val"><input type="text" id="mp-des" class="cp-inp cp-inp-val" readonly placeholder="auto" style="opacity:.75"></div>
+          </div>
+          <!-- Linha 3: Comissão (full width, campo largo) -->
+          <div class="cp-row" style="background:rgba(62,207,142,.05);border-radius:8px;border:1px solid rgba(62,207,142,.15)">
+            <div class="cp-lbl"><span class="cp-icon">%</span>Comissão</div>
+            <div class="cp-val" style="gap:8px;align-items:center">
+              <input type="text" id="mp-com" class="cp-inp cp-inp-val" readonly placeholder="R$ 0,00"
+                style="flex:1;font-size:15px;font-weight:700;color:var(--green);border-color:rgba(62,207,142,.3)">
+              <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;white-space:nowrap">
+                <input type="number" id="mp-pct" value="5" min="1" max="20" step="0.1" oninput="calcAuto()"
+                  style="width:50px;background:var(--bg3);border:1px solid var(--accent);color:var(--accent);
+                    border-radius:6px;padding:5px 6px;font-size:13px;font-family:var(--font);outline:none;
+                    text-align:center;font-weight:700">
+                <span style="color:var(--muted);font-size:12px">%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pagamento -->
+        <div class="sp-section">
+          <div class="sp-section-title">Pagamento</div>
+          <div class="cp-row"><div class="cp-lbl"><span class="cp-icon">💳</span>Forma de pagamento</div>
+            <div class="cp-val"><select id="mp-pagto" class="cp-sel" onchange="togglePagtoObs()">
+              <option value="À vista">À vista</option>
+              <option value="Financiado">Financiado</option>
+              <option value="Outro">Outro</option>
+            </select></div></div>
+          <div class="cp-row" id="pagto-obs-row" style="display:none">
+            <div class="cp-lbl"><span class="cp-icon">📝</span>Condições</div>
+            <div class="cp-val"><input type="text" id="mp-pagtoObs" class="cp-inp" placeholder="Entrada 30% + 120x + 10% a.a."></div>
+          </div>
+        </div>
+
+        <!-- Datas -->
+        <div class="sp-section">
+          <div class="sp-section-title">Datas</div>
+          <div class="cp-row"><div class="cp-lbl"><span class="cp-icon">📅</span>Data de chegada</div>
+            <div class="cp-val"><input type="date" id="mp-chegada" class="cp-inp" oninput="autoLimite()"></div></div>
+          <div class="cp-row"><div class="cp-lbl"><span class="cp-icon">⏰</span>Limite de retorno</div>
+            <div class="cp-val"><input type="date" id="mp-limite" class="cp-inp"></div></div>
+        </div>
+
+      </div>
+
+      <!-- ACTIVITY (coluna direita) -->
+      <div class="sp-activity">
+        <div class="sp-act-title">Activity</div>
+        <div class="sp-act-log" id="sp-hist-log"></div>
+        <div class="sp-act-inp">
+          <div class="act-inp-row">
+            <div class="act-avatar" style="margin-top:2px">FR</div>
+            <div class="act-inp-wrap">
+              <textarea id="sp-hist-inp" placeholder="Escreva um comentário... (Enter para enviar)"
+                onkeydown="if(event.key==='Enter'&&!event.shiftKey){addHist();event.preventDefault()}"
+                oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'"></textarea>
+              <div style="display:flex;justify-content:flex-end">
+                <button class="btn btn-primary btn-sm" onclick="addHist()">Comentário ▶</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL EMAIL ══ -->
+<div class="overlay" id="modal-email">
+<div class="modal" style="max-width:700px">
+  <div class="modal-hd">
+    <span class="modal-title">✉ Gerar e-mail</span>
+    <button class="modal-close" onclick="closeModal('modal-email')">✕</button>
+  </div>
+  <div class="modal-body">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;font-size:12px" id="email-meta"></div>
+    <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+      <button class="email-group-btn active" onclick="setGroup(0)">📥 Acuse de Recebimento</button>
+      <button class="email-group-btn" onclick="setGroup(1)">❓ Info Faltante</button>
+      <button class="email-group-btn" onclick="setGroup(2)">📤 Envio ao Credor</button>
+      <button class="email-group-btn" onclick="setGroup(3)">↩ Contra Proposta</button>
+      <button class="email-group-btn" onclick="setGroup(4)">❌ Negativas</button>
+    </div>
+    <div id="email-subtabs" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px;padding:8px;background:var(--bg3);border-radius:var(--r)"></div>
+    <div class="email-prev" id="email-prev"></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px">
+      <button class="btn btn-ghost btn-sm" onclick="openMail()">Abrir cliente de e-mail</button>
+      <button class="btn btn-success btn-sm" onclick="copyEmail()">📋 Copiar</button>
+    </div>
+  </div>
+</div></div>
+
+<!-- ══ MODAL CONTATO ══ -->
+<div class="overlay" id="modal-c">
+<div class="modal modal-sm">
+  <div class="modal-hd">
+    <span class="modal-title" id="mc-title">Novo Contato</span>
+    <button class="modal-close" onclick="closeModal('modal-c')">✕</button>
+  </div>
+  <div class="modal-body">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="fg"><label>Nome completo</label><input type="text" id="mc-nome"></div>
+      <div class="fg"><label>E-mail</label><input type="email" id="mc-email"></div>
+      <div class="fg"><label>Telefone</label><input type="text" id="mc-tel"></div>
+      <div class="fg"><label>Observações</label><textarea id="mc-obs"></textarea></div>
+    </div>
+  </div>
+  <div class="modal-ft">
+    <button class="btn btn-ghost" onclick="closeModal('modal-c')">Cancelar</button>
+    <button class="btn btn-primary" onclick="saveContato()">Salvar</button>
+  </div>
+</div></div>
+
+<!-- ══ MODAL COLAR DO SHEETS ══ -->
+<div class="overlay" id="modal-paste">
+<div class="modal" style="max-width:640px">
+  <div class="modal-hd">
+    <span class="modal-title">📋 Colar dados do Sheets</span>
+    <button class="modal-close" onclick="closeModal('modal-paste')">✕</button>
+  </div>
+  <div class="modal-body">
+    <div style="background:rgba(79,110,247,.08);border:1px solid rgba(79,110,247,.2);
+      border-radius:var(--r);padding:12px 14px;margin-bottom:14px;font-size:12px;color:var(--text)">
+      <strong>Como usar:</strong><br>
+      1. No Google Sheets, selecione todas as linhas com dados (incluindo o cabeçalho)<br>
+      2. Copie com <kbd style="background:var(--bg3);padding:1px 5px;border-radius:3px;font-size:11px">Ctrl+C</kbd><br>
+      3. Clique na área abaixo e cole com <kbd style="background:var(--bg3);padding:1px 5px;border-radius:3px;font-size:11px">Ctrl+V</kbd><br>
+      4. Clique em <strong>Importar</strong>
+    </div>
+    <div class="fg">
+      <label>Dados copiados do Sheets</label>
+      <textarea id="paste-input" style="min-height:200px;font-family:monospace;font-size:11px"
+        placeholder="Cole aqui os dados copiados do Sheets (Ctrl+V)..."></textarea>
+    </div>
+    <div id="paste-preview" style="display:none;margin-top:10px;padding:10px 14px;
+      background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);font-size:12px"></div>
+  </div>
+  <div class="modal-ft">
+    <button class="btn btn-ghost" onclick="closeModal('modal-paste')">Cancelar</button>
+    <button class="btn btn-ghost" onclick="previewPaste()">👁 Pré-visualizar</button>
+    <button class="btn btn-primary" onclick="importPaste()">✅ Importar</button>
+  </div>
+</div></div>
+
+<!-- ══ MODAL IA ══ -->
+<div class="overlay" id="modal-ia">
+<div class="modal" style="max-width:500px">
+  <div class="modal-hd">
+    <span class="modal-title">🤖 Importar por imagem</span>
+    <button class="modal-close" onclick="closeModal('modal-ia')">✕</button>
+  </div>
+  <div class="modal-body">
+    <p style="color:var(--muted);font-size:13px;margin-bottom:14px">Envie print de e-mail ou tela da proposta. O assistente extrai as informações e preenche o formulário.</p>
+    <div class="ia-drop" id="ia-drop" onclick="document.getElementById('ia-file').click()"
+      ondragover="iaDragOver(event)" ondrop="iaDrop(event)">
+      <div style="font-size:30px">📎</div>
+      <p>Clique ou arraste uma imagem (PNG, JPG) ou PDF</p>
+    </div>
+    <input type="file" id="ia-file" accept="image/png,image/jpeg,image/webp,application/pdf" style="display:none" onchange="iaProcess(event)">
+    <div class="ia-st" id="ia-st"></div>
+  </div>
+</div></div>
+
+<!-- ══ LEGENDA DROPDOWN ══ -->
+<div id="legenda-panel" style="display:none;position:fixed;top:var(--th);right:20px;z-index:500;
+  background:var(--bg2);border:1px solid var(--border);border-radius:12px;
+  padding:16px;min-width:260px;box-shadow:0 8px 32px rgba(0,0,0,.5);margin-top:6px">
+  <div style="font-size:12px;font-weight:700;margin-bottom:12px;color:var(--text)">Sistema de cores</div>
+  <div style="display:flex;flex-direction:column;gap:8px;font-size:12px">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span class="badge c-azul" style="width:14px;height:14px;border-radius:50%;padding:0;flex-shrink:0"></span>
+      <div><strong style="color:var(--text)">Azul</strong> <span style="color:var(--muted)">— recebido / em andamento</span></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span class="badge c-laranja" style="width:14px;height:14px;border-radius:50%;padding:0;flex-shrink:0"></span>
+      <div><strong style="color:var(--text)">Laranja</strong> <span style="color:var(--muted)">— precisa de ação</span></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span class="badge c-ciano" style="width:14px;height:14px;border-radius:50%;padding:0;flex-shrink:0"></span>
+      <div><strong style="color:var(--text)">Ciano</strong> <span style="color:var(--muted)">— em negociação</span></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span class="badge c-verde-forte" style="width:14px;height:14px;border-radius:50%;padding:0;flex-shrink:0"></span>
+      <div><strong style="color:var(--text)">Verde</strong> <span style="color:var(--muted)">— positivo / enviado / concluído</span></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span class="badge c-vermelho" style="width:14px;height:14px;border-radius:50%;padding:0;flex-shrink:0"></span>
+      <div><strong style="color:var(--text)">Vermelho</strong> <span style="color:var(--muted)">— negativo / não enviar</span></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span class="badge c-roxo" style="width:14px;height:14px;border-radius:50%;padding:0;flex-shrink:0"></span>
+      <div><strong style="color:var(--text)">Roxo</strong> <span style="color:var(--muted)">— suspenso / jurídico</span></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span class="badge c-amarelo" style="width:14px;height:14px;border-radius:50%;padding:0;flex-shrink:0"></span>
+      <div><strong style="color:var(--text)">Amarelo</strong> <span style="color:var(--muted)">— situação atípica</span></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span class="badge c-cinza" style="width:14px;height:14px;border-radius:50%;padding:0;flex-shrink:0"></span>
+      <div><strong style="color:var(--text)">Cinza</strong> <span style="color:var(--muted)">— neutro / aguardando</span></div>
+    </div>
+  </div>
+  <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);
+    font-size:10px;color:var(--muted2);text-align:center">
+    Status · Enviado ao Credor · Retorno ao Interessado
+  </div>
+</div>
+
+<!-- ══ MODAL IMPORTAR DO CHAT ══ -->
+<div class="overlay" id="modal-json">
+<div class="modal" style="max-width:720px">
+  <div class="modal-hd">
+    <span class="modal-title">📋 Importar do Chat</span>
+    <button class="modal-close" onclick="closeModal('modal-json')">✕</button>
+  </div>
+  <div class="modal-body">
+
+    <!-- Passo 1: colar JSON -->
+    <div id="json-step1">
+      <div style="background:rgba(79,110,247,.08);border:1px solid rgba(79,110,247,.2);
+        border-radius:var(--r);padding:10px 14px;margin-bottom:12px;font-size:12px;color:var(--text)">
+        Cole o JSON gerado pelo Claude e clique em <strong>Pré-visualizar</strong> para revisar e editar antes de importar.
+      </div>
+      <div class="fg">
+        <label>JSON da proposta</label>
+        <textarea id="json-input" style="min-height:160px;font-family:monospace;font-size:11px"
+          placeholder='{"nomeInteressado":"João","credor":"Inter","valorProposta":150000,...}'></textarea>
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-top:10px">
+        <button class="btn btn-primary" onclick="carregarPreview()">👁 Pré-visualizar e editar</button>
+      </div>
+    </div>
+
+    <!-- Passo 2: formulário editável -->
+    <div id="json-step2" style="display:none">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <span style="font-size:12px;color:var(--muted)">Revise e complete os dados antes de importar</span>
+        <button class="btn btn-ghost btn-sm" onclick="voltarStep1()">← Voltar</button>
+      </div>
+      <div class="form-grid">
+
+        <div class="fsec">Interessado</div>
+        <div class="fg"><label>Nome do interessado</label><input type="text" id="jf-nome"></div>
+        <div class="fg"><label>E-mail</label><input type="email" id="jf-email"></div>
+
+        <div class="fsec">Imóvel</div>
+        <div class="fg full"><label>Nome do imóvel</label><input type="text" id="jf-nomeImovel"></div>
+        <div class="fg full" style="position:relative">
+          <label>Link do imóvel</label>
+          <div style="display:flex;gap:6px">
+            <input type="text" id="jf-link" style="flex:1">
+            <button class="btn btn-ghost btn-sm" onclick="abrirLinkPreview()" title="Abrir link para validar">🔗</button>
+          </div>
+        </div>
+
+        <div class="fsec">Proposta</div>
+        <div class="fg"><label>Credor</label><input type="text" id="jf-credor" placeholder="⚠️ Preencha após validar o link"></div>
+        <div class="fg"><label>Status</label>
+          <select id="jf-status">
+            <option>Recebido e-mail</option>
+            <option>Atuação comercial</option>
+            <option>Contra Proposta</option>
+            <option>Positivo</option>
+            <option>Negativo</option>
+          </select>
+        </div>
+        <div class="fg"><label>Valor de Leilão (R$)</label><input type="text" id="jf-vlLeilao" oninput="calcPreviewDes()"></div>
+        <div class="fg"><label>Valor de Proposta (R$)</label><input type="text" id="jf-vlProp" oninput="calcPreviewDes()"></div>
+        <div class="fg"><label>Deságio %</label><input type="text" id="jf-desagio" readonly></div>
+        <div class="fg"><label>Forma de pagamento</label>
+          <select id="jf-pagto" onchange="toggleJfPagtoObs()">
+            <option>À vista</option>
+            <option>Financiado</option>
+            <option>Parcelado</option>
+          </select>
+        </div>
+        <div class="fg full" id="jf-pagto-obs-wrap" style="display:none">
+          <label>Condições de pagamento</label>
+          <input type="text" id="jf-pagtoObs" placeholder="Ex: Entrada 20% + 120 parcelas + 10% a.a.">
+        </div>
+        <div class="fg"><label>Comissão % (padrão 5%)</label>
+          <div style="display:flex;gap:6px;align-items:center">
+            <input type="number" id="jf-pct" value="5" min="1" max="20" step="0.1" style="width:70px" oninput="calcPreviewDes()">
+            <span style="color:var(--muted);font-size:12px">% →</span>
+            <input type="text" id="jf-comissao" readonly style="flex:1">
+          </div>
+        </div>
+
+        <div class="fsec">Datas e Matrícula</div>
+        <div class="fg"><label>Data de chegada</label><input type="date" id="jf-chegada" oninput="calcJfLimite()"></div>
+        <div class="fg"><label>Data limite (+7 dias auto)</label><input type="date" id="jf-limite"></div>
+        <div class="fg full"><label>Matrícula do imóvel</label><input type="text" id="jf-matricula"></div>
+
+        <div class="fsec">Observações</div>
+        <div class="fg full"><label>Observações</label><textarea id="jf-obs" style="min-height:60px"></textarea></div>
+      </div>
+    </div>
+
+  </div>
+  <div class="modal-ft">
+    <button class="btn btn-ghost" onclick="closeModal('modal-json')">Cancelar</button>
+    <button class="btn btn-primary" id="json-import-btn" style="display:none" onclick="importFromChat()">✅ Importar proposta</button>
+  </div>
+</div></div>
+
+<!-- ══ MODAL AVISO ══ -->
+<div class="overlay" id="modal-alert">
+<div class="modal" style="max-width:460px">
+  <div class="modal-hd">
+    <span class="modal-title" id="alert-title">Aviso</span>
+    <button class="modal-close" onclick="closeModal('modal-alert')">✕</button>
+  </div>
+  <div class="modal-body">
+    <div id="alert-body" style="font-size:13px;line-height:1.7;color:var(--text)"></div>
+  </div>
+  <div class="modal-ft">
+    <button class="btn btn-primary" onclick="closeModal('modal-alert')">Entendido</button>
+  </div>
+</div></div>
+
+<div class="toast" id="toast"></div>
+<input type="file" id="csv-input" accept=".csv" style="display:none" onchange="handleImport(event)">
+<input type="file" id="json-mass-input" accept=".json" style="display:none" onchange="handleJSONMassImport(event)">
+
+<script>
+'use strict';
+// ═══ COLUNAS ════════════════════════════════════════════════════
+const COLS=[
+  {key:'status',            label:'Status',                w:140,sort:true,
+   filter:'select',opts:['Recebido e-mail','Atuação comercial','Contra Proposta','Positivo','Negativo'],
+   editable:true,editOpts:['Recebido e-mail','Atuação comercial','Contra Proposta','Positivo','Negativo']},
+  {key:'credor',            label:'Credor',                w:115,sort:true,filter:'text'},
+  {key:'parceiro',          label:'Parceiro?',             w:75, sort:true,filter:'select',opts:['Sim','Não']},
+  {key:'enviadoCredor',     label:'Enviado ao Credor',     w:175,sort:true,
+   filter:'select',opts:['SIM','A ser enviado','Valor abaixo - Não Enviar','Feirão INTER - NÃO ENVIAR','Adicionado ao corpo do e-mail','A.F (não pode ser mandado)','Vendido ou Leilão Suspenso'],
+   editable:true,editOpts:['SIM','A ser enviado','Valor abaixo - Não Enviar','Feirão INTER - NÃO ENVIAR','Adicionado ao corpo do e-mail','A.F (não pode ser mandado)','Vendido ou Leilão Suspenso']},
+  {key:'dataEnvio',         label:'Data de Envio',         w:105,sort:true,filter:'date'},
+  {key:'retornoInteressado',label:'Retorno ao Interessado',w:205,sort:true,filter:'text',
+   editable:true,editOpts:['Informar Forma de pagamento','Pedido de Comissão','Informar Link do Imóvel','Recebimento Enviado ao interessado','Contra Proposta','Contra Proposta - Aguardando retorno do interessado','Vendido ou Leilão Suspenso','Negativa enviada ao interessado','Interessado desejou não prosseguir','Analisará Pós Leilão','Situação Atípica','Pedido de documentação','Fluxo com Jurídico','Enviado ao credor (promessa de compra)']},
+  {key:'nomeInteressado',   label:'Interessado',           w:140,sort:true,filter:'text'},
+  {key:'nomeImovel',        label:'Imóvel / Link',         w:185,sort:true,filter:'text'},
+  {key:'valorLeilao',       label:'Valor de Leilão',       w:130,sort:true,filter:'text'},
+  {key:'valorProposta',     label:'Valor de Proposta',     w:130,sort:true,filter:'text'},
+  {key:'desagio',           label:'Deságio %',             w:80, sort:true,filter:'text'},
+  {key:'formaPagto',        label:'Pagamento',             w:110,sort:true,filter:'select',opts:['À vista','Financiado','Outro']},
+  {key:'comissao',          label:'Comissão',              w:120,sort:true,filter:'text'},
+  {key:'dataChegada',       label:'Chegada',               w:100,sort:true,filter:'daterange'},
+  {key:'dataLimite',        label:'Limite Retorno',        w:110,sort:true,filter:'daterange'},
+  {key:'matricula',         label:'Matrícula',             w:145,sort:true,filter:'text'},
+  {key:'emailInteressado',  label:'E-mail',                w:165,sort:true,filter:'text'},
+  {key:'_acoes',            label:'Ações',                 w:80, sort:false,filter:null},
+];
+
+// ═══ ABAS ════════════════════════════════════════════════════════
+const ABAS = {
+  geral:     { label:'GERAL',     desc:'Todas as propostas',  cor:'#4f6ef7', sk:'smart_v6_geral' },
+  itau:      { label:'ITAÚ',      desc:'Propostas Itaú',      cor:'#f97316', sk:'smart_v6_itau'  },
+  bradesco:  { label:'BRADESCO',  desc:'Propostas Bradesco',  cor:'#e55',    sk:'smart_v6_brad'  },
+  santander: { label:'SANTANDER', desc:'Propostas Santander', cor:'#e55',    sk:'smart_v6_sant'  },
+};
+let abaAtual = 'geral';
+
+// ═══ DADOS ══════════════════════════════════════════════════════
+const SK_C='smart_v6_c';
+let propostas=[],contatos=[];
+let editId=null,emailP=null,editCId=null;
+let activeTab=0,sortCol='dataChegada',sortDir=1;
+let histEntries=[],acIdx=-1;
+// Valores dos selects coloridos do painel
+let csVals = { status:'Recebido e-mail', enviado:'', retint:'' };
+
+function loadData(){
+  const aba = ABAS[abaAtual];
+  try{propostas=JSON.parse(localStorage.getItem(aba.sk))||[];}catch{propostas=[];}
+  try{contatos=JSON.parse(localStorage.getItem(SK_C))||[];}catch{contatos=[];}
+}
+function saveData(){
+  const aba = ABAS[abaAtual];
+  localStorage.setItem(aba.sk,JSON.stringify(propostas));
+  localStorage.setItem(SK_C,JSON.stringify(contatos));
+}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
+
+
+// ═══ FORMATAÇÃO ═════════════════════════════════════════════════
+const fmt=v=>v||v===0?'R$ '+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}):'—';
+const fmtDate=d=>{if(!d)return'—';const[y,m,day]=d.split('-');return`${day}/${m}/${y}`;};
+const fmtDT=ts=>{const d=new Date(ts);return d.toLocaleDateString('pt-BR')+' às '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});};
+const parseVal=s=>{const n=parseFloat(String(s||'').replace(/[R$\s]/g,'').replace(/\./g,'').replace(',','.'));return isNaN(n)?0:n;};
+
+function badgeStatus(s){
+  if(!s)return'<span style="color:var(--muted)">—</span>';
+  const m={
+    'Recebido e-mail':   'c-texto',      // sem badge, texto normal
+    'Atuação comercial': 'c-laranja',     // 🟠 precisa de ação
+    'Contra Proposta':   'c-roxo',        // 🟣 em negociação
+    'Positivo':          'c-verde-forte', // 🟢 deu certo
+    'Negativo':          'c-vermelho',    // 🔴 negativo
+    'Enviado':           'c-verde',
+    'Vendido/Suspenso':  'c-roxo',
+    'Valor abaixo - Não Enviar': 'c-cinza',
+  };
+  return`<span class="badge ${m[s]||'c-cinza'}">${s}</span>`;
+}
+function badgeEnviado(v, status){
+  if(!v)return'<span style="color:var(--muted)">—</span>';
+  // SIM herda a cor do Status da proposta
+  let simCls = 'c-verde-forte';
+  if(v==='SIM'){
+    if(status==='Contra Proposta') simCls='c-roxo';
+    else if(status==='Atuação comercial') simCls='c-laranja';
+    else if(status==='Negativo') simCls='c-vermelho';
+    else simCls='c-verde-forte';
+    return`<span class="badge ${simCls}" style="font-size:10px;padding:2px 7px">${v}</span>`;
+  }
+  const m={
+    'A ser enviado':                 'c-amarelo',
+    'Valor abaixo - Não Enviar':     'c-vab-red',
+    'Feirão INTER - NÃO ENVIAR':     'c-vermelho',
+    'Adicionado ao corpo do e-mail': 'c-laranja',
+    'A.F (não pode ser mandado)':    'c-vermelho',
+    'Vendido ou Leilão Suspenso':    'c-vermelho',
+  };
+  return`<span class="badge ${m[v]||'c-cinza'}" style="font-size:10px;padding:2px 7px">${v}</span>`;
+}
+function badgeRetorno(v){
+  if(!v)return'<span style="color:var(--muted)">—</span>';
+  const m={
+    // 🟠 Laranja — precisa de ação minha
+    'Informar Forma de pagamento':                       'c-laranja',
+    'Pedido de Comissão':                                'c-laranja',
+    'Informar Link do Imóvel':                           'c-laranja',
+    'Pedido de documentação':                            'c-verde-forte',
+    // 🔵 Azul — recebido / em andamento
+    'Recebimento Enviado ao interessado':                 'c-texto',
+    // 🩵 Ciano — em negociação
+    'Contra Proposta':                                   'c-roxo',
+    'Contra Proposta - Aguardando retorno do interessado':'c-roxo-claro',
+    // 🔴 Vermelho — negativo
+    'Negativa enviada ao interessado':                    'c-vermelho',
+    'Interessado desejou não prosseguir':                 'c-vermelho',
+    // 🟣 Roxo — suspenso
+    'Vendido ou Leilão Suspenso':                        'c-vermelho',
+    // ⚪ Cinza — neutro / aguardando
+    'Analisará Pós Leilão':                              'c-vermelho',
+    // 🟡 Amarelo — atípico
+    'Situação Atípica':                                  'c-amarelo',
+    // 🟢 Verde — pós-venda / concluído positivo
+    'Fluxo com Jurídico':                                'c-verde',
+    'Enviado ao credor (promessa de compra)':             'c-verde-forte',
+    'SIM':                                               'c-verde-forte',
+  };
+  return`<span class="badge ${m[v]||'c-cinza'}" style="font-size:10px;padding:2px 7px;white-space:normal;line-height:1.3">${v}</span>`;
+}
+function dateClass(d){
+  if(!d)return'';
+  const t=new Date();t.setHours(0,0,0,0);
+  const dt=new Date(d+'T00:00:00');
+  const diff=(dt-t)/86400000;
+  return diff<0?'dl-exp':diff===0?'dl-hj':diff<=2?'dl-soo':'';
+}
+
+// ═══ INICIALIZAR SELECTS COLORIDOS ══════════════════════════════
+const OPTS_STATUS  = ['Recebido e-mail','Atuação comercial','Contra Proposta','Positivo','Negativo'];
+const OPTS_ENVIADO = ['SIM','A ser enviado','Valor abaixo - Não Enviar','Feirão INTER - NÃO ENVIAR','Adicionado ao corpo do e-mail','A.F (não pode ser mandado)','Vendido ou Leilão Suspenso'];
+const OPTS_RETINT  = ['Informar Forma de pagamento','Pedido de Comissão','Informar Link do Imóvel','Recebimento Enviado ao interessado','Contra Proposta','Contra Proposta - Aguardando retorno do interessado','Vendido ou Leilão Suspenso','Negativa enviada ao interessado','Interessado desejou não prosseguir','Analisará Pós Leilão','Situação Atípica','Pedido de documentação','Fluxo com Jurídico','Enviado ao credor (promessa de compra)'];
+
+function initCSSelects(){
+  buildCS('cs-status',  OPTS_STATUS,  csVals.status,  v=>{ csVals.status=v; });
+  buildCS('cs-enviado', OPTS_ENVIADO, csVals.enviado, v=>{ csVals.enviado=v; onEnviadoChange(v); });
+  buildCS('cs-retint',  OPTS_RETINT,  csVals.retint,  v=>{ csVals.retint=v; });
+}
+
+// ═══ THEAD (gerado dinamicamente) ═══════════════════════════════
+function buildThead(){
+  const colHead=document.getElementById('col-group-head');
+  const colBody=document.getElementById('col-group-body');
+  COLS.forEach(c=>{
+    const ch=document.createElement('col');ch.style.width=c.w+'px';colHead.appendChild(ch);
+    const cb=document.createElement('col');cb.style.width=c.w+'px';colBody.appendChild(cb);
+  });
+  const tr=document.createElement('tr');
+  COLS.forEach(col=>{
+    const th=document.createElement('th');
+    let html=`<div class="th-inner">`;
+    html+=col.sort
+      ?`<div class="th-lbl" id="thl-${col.key}" onclick="sortBy('${col.key}')">${col.label}<span class="sort-ic">↕</span></div>`
+      :`<div class="th-lbl no-sort">${col.label}</div>`;
+    if(col.filter==='text'){
+      html+=`<div class="th-flt"><input id="cf-${col.key}" placeholder="🔍 filtrar..." oninput="renderTable()"></div>`;
+    }else if(col.filter==='select'){
+      html+=`<div class="th-flt"><div class="flt-wrap">
+        <button class="flt-btn" id="flt-btn-${col.key}" onclick="buildFilterDropdown(COLS.find(c=>c.key==='${col.key}'),this)">
+          <span class="flt-btn-text">▼ Todos</span>
+        </button>
+      </div></div>`;
+    }else if(col.filter==='date'){
+      html+=`<div class="th-flt"><input type="date" id="cf-${col.key}" onchange="renderTable()"></div>`;
+    }else if(col.filter==='daterange'){
+      html+=`<div class="th-flt"><div class="dr-wrap">
+        <span class="dr-label">De</span>
+        <input type="date" id="cf-${col.key}-de" onchange="renderTable()" title="Data inicial">
+        <span class="dr-label">Até</span>
+        <input type="date" id="cf-${col.key}-ate" onchange="renderTable()" title="Data final">
+      </div></div>`;
+    }else{
+      html+=`<div class="th-flt" style="height:27px"></div>`;
+    }
+    html+=`</div>`;
+    th.innerHTML=html;tr.appendChild(th);
+  });
+  document.getElementById('thead-main').appendChild(tr);
+}
+
+// Sincronizar scroll horizontal entre header e body
+function syncScroll(el){
+  document.getElementById('thead-wrap').scrollLeft=el.scrollLeft;
+}
+// Sincronizar quando o header é rolado (ex: resize)
+document.addEventListener('DOMContentLoaded',()=>{
+  const tw=document.getElementById('thead-wrap');
+  const bw=document.getElementById('tbody-wrap');
+  if(tw)tw.addEventListener('scroll',()=>{bw.scrollLeft=tw.scrollLeft;});
+});
+
+// ═══ ABAS / VIEWS ════════════════════════════════════════════════
+function setAba(aba){
+  // fechar painel se aberto
+  if(document.getElementById('side-overlay').classList.contains('open')) closePanel();
+
+  if(aba === 'contatos'){
+    // Mostrar view contatos
+    document.querySelectorAll('.view').forEach(el=>el.classList.remove('active'));
+    document.querySelectorAll('.nav-btn').forEach(el=>el.classList.remove('active'));
+    document.getElementById('view-contatos').classList.add('active');
+    document.getElementById('tab-contatos').classList.add('active');
+    renderContatos();
+    return;
+  }
+
+  // Trocar aba de propostas
+  abaAtual = aba;
+  loadData();
+  clearFilters();
+
+  // Atualizar badge e descrição
+  const cfg = ABAS[aba];
+  const badge = document.getElementById('aba-badge');
+  const desc  = document.getElementById('aba-desc');
+  if(badge){ badge.textContent=cfg.label; badge.style.color=cfg.cor; badge.style.background=cfg.cor+'22'; }
+  if(desc)  desc.textContent=cfg.desc;
+
+  // Mostrar view tabela
+  document.querySelectorAll('.view').forEach(el=>el.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(el=>el.classList.remove('active'));
+  document.getElementById('view-tabela').classList.add('active');
+  document.getElementById('tab-'+aba).classList.add('active');
+
+  // resetar filtros de dropdown
+  Object.keys(filterState).forEach(k=>delete filterState[k]);
+  COLS.forEach(col=>{ if(col.filter==='select') updateFilterBtnLabel(col.key); });
+
+  renderTable();
+}
+
+// ═══ KPIs ═══════════════════════════════════════════════════════
+function renderKPIs(f){
+  const all=propostas,isF=f.length!==all.length;
+  const tv=f.reduce((a,p)=>a+(Number(p.valorProposta)||0),0);
+  const tc=f.reduce((a,p)=>a+(Number(p.comissao)||0),0);
+  const env=f.filter(p=>p.enviadoCredor==='SIM').length;
+  const ac=f.filter(p=>p.status==='Positivo'||p.status==='Vendido/Suspenso').length;
+  const ap=env>0?((ac/env)*100).toFixed(0):0;
+  const p1=ac>0?(f.length/ac).toFixed(2):'—';
+  document.getElementById('kpis').innerHTML=`
+    <div class="kpi"><div class="kpi-label">Total de Propostas</div><div class="kpi-value ca">${f.length}</div>${isF?`<div class="kpi-sub">de ${all.length} total</div>`:''}</div>
+    <div class="kpi"><div class="kpi-label">Valor Total de Propostas</div><div class="kpi-value">${fmt(tv)}</div>${isF?'<div class="kpi-sub" style="color:var(--accent)">⚠ filtrado</div>':''}</div>
+    <div class="kpi"><div class="kpi-label">Valor Total em Comissões</div><div class="kpi-value cg">${fmt(tc)}</div>${isF?'<div class="kpi-sub" style="color:var(--accent)">⚠ filtrado</div>':''}</div>
+    <div class="kpi"><div class="kpi-label">Propostas Enviadas</div><div class="kpi-value">${env}</div><div class="kpi-sub">de ${f.length} recebidas</div></div>
+    <div class="kpi"><div class="kpi-label">Propostas Aceitas</div><div class="kpi-value cg">${ac}</div></div>
+    <div class="kpi"><div class="kpi-label">Aproveitamento</div><div class="kpi-value cy">${ap}%</div><div class="kpi-sub">aceitas / enviadas</div></div>
+    <div class="kpi"><div class="kpi-label">Propostas p/ 1 Venda</div><div class="kpi-value">${p1}</div></div>`;
+}
+
+// ═══ FILTROS ════════════════════════════════════════════════════
+function getFiltered(){
+  return propostas.filter(p=>{
+    for(const col of COLS){
+      if(!col.filter)continue;
+      // Filtros de dropdown com checkbox (select)
+      if(col.filter==='select'){
+        const sel=filterState[col.key];
+        if(sel&&!sel.has(String(p[col.key]||'')))return false;
+        continue;
+      }
+      // Filtro de período (daterange)
+      if(col.filter==='daterange'){
+        const elDe  = document.getElementById('cf-'+col.key+'-de');
+        const elAte = document.getElementById('cf-'+col.key+'-ate');
+        const pv = String(p[col.key]||'');
+        if(elDe && elDe.value && pv < elDe.value) return false;
+        if(elAte && elAte.value && pv > elAte.value) return false;
+        continue;
+      }
+      // Filtros de texto e data (input normal)
+      const el=document.getElementById('cf-'+col.key);
+      if(!el||!el.value)continue;
+      const fv=el.value,pv=String(p[col.key]||'');
+      if(col.filter==='date'){if(pv!==fv)return false;}
+      else{if(!pv.toLowerCase().includes(fv.toLowerCase()))return false;}
+    }
+    return true;
+  });
+}
+function clearFilters(){
+  COLS.forEach(col=>{
+    if(col.filter==='text'||col.filter==='date'){
+      const el=document.getElementById('cf-'+col.key);if(el)el.value='';
+    }
+    if(col.filter==='daterange'){
+      const de=document.getElementById('cf-'+col.key+'-de');
+      const ate=document.getElementById('cf-'+col.key+'-ate');
+      if(de)de.value=''; if(ate)ate.value='';
+    }
+    if(col.filter==='select'){
+      delete filterState[col.key];
+      updateFilterBtnLabel(col.key);
+    }
+  });
+  renderTable();
+}
+
+// ═══ SORT ═══════════════════════════════════════════════════════
+function sortBy(col){
+  if(sortCol===col)sortDir*=-1;else{sortCol=col;sortDir=1;}
+  document.querySelectorAll('.th-lbl').forEach(el=>el.classList.remove('sorted'));
+  const el=document.getElementById('thl-'+col);if(el)el.classList.add('sorted');
+  renderTable();
+}
+
+// ═══ TABELA ═════════════════════════════════════════════════════
+function renderTable(){
+  let data=getFiltered();
+  renderKPIs(data);
+  data.sort((a,b)=>{
+    let av=a[sortCol]??'',bv=b[sortCol]??'';
+    if(typeof av==='number')return(av-bv)*sortDir;
+    return av.toString().localeCompare(bv.toString(),'pt-BR')*sortDir;
+  });
+  const tbody=document.getElementById('tbody');
+  const empty=document.getElementById('empty-st');
+  document.getElementById('count-bar').textContent=`Exibindo ${data.length} de ${propostas.length} propostas`;
+  if(!data.length){tbody.innerHTML='';empty.style.display='block';return;}
+  empty.style.display='none';
+
+  tbody.innerHTML=data.map(p=>{
+    const des=Number(p.desagio)||0;
+    // negativo = proposta > leilão = destaque verde florescente
+    // 0 = verde fluorescente (igual ao negativo — igual ao leilão)
+    // 0-30% = verde normal, >30% = amarelo
+    const desClass=des<=0?'des-neg':des<30?'des-v':'des-a';
+    const dc=dateClass(p.dataLimite);
+    const rowCls=p.status==='Positivo'?'row-pos':p.status==='Contra Proposta'?'row-contra':'';
+    const pagFull=p.formaPagto+(p.pagtoObs?` · ${p.pagtoObs}`:'');
+    const imCell=p.nomeImovel
+      ?`<a href="${p.linkImovel||'#'}" target="_blank" class="link-im" onclick="event.stopPropagation()" title="${p.linkImovel||''}">🔗 ${p.nomeImovel}</a>`
+      :(p.linkImovel?`<a href="${p.linkImovel}" target="_blank" class="link-im" onclick="event.stopPropagation()">🔗 Ver imóvel</a>`:'—');
+
+    return`<tr class="${rowCls}" onclick="openPanel('${p.id}')">
+      <td class="cell-editable" data-id="${p.id}" data-field="status" onclick="startInline(event,this)">${badgeStatus(p.status)}</td>
+      <td>${p.credor||'—'}</td>
+      <td style="color:var(--muted)">${p.parceiro||'—'}</td>
+      <td class="cell-editable" data-id="${p.id}" data-field="enviadoCredor" onclick="startInline(event,this)">${badgeEnviado(p.enviadoCredor,p.status)}</td>
+      <td>${fmtDate(p.dataEnvio)}</td>
+      <td class="cell-editable" data-id="${p.id}" data-field="retornoInteressado" onclick="startInline(event,this)">${badgeRetorno(p.retornoInteressado)}</td>
+      <td>${p.nomeInteressado||'—'}</td>
+      <td title="${p.linkImovel||''}">${imCell}</td>
+      <td>${fmt(p.valorLeilao)}</td>
+      <td>${fmt(p.valorProposta)}</td>
+      <td class="${desClass}">${des?des.toFixed(2)+'%':'—'}</td>
+      <td title="${pagFull}">${pagFull}</td>
+      <td>${fmt(p.comissao)}</td>
+      <td>${fmtDate(p.dataChegada)}</td>
+      <td class="${dc}">${fmtDate(p.dataLimite)}</td>
+      <td title="${p.matricula||''}">${p.matricula||'—'}</td>
+      <td><a href="mailto:${p.emailInteressado||''}" onclick="event.stopPropagation()" style="color:var(--accent);font-size:11px">${p.emailInteressado||'—'}</a></td>
+      <td><div class="td-act" onclick="event.stopPropagation()">
+        <button class="btn btn-ghost btn-sm" onclick="openEmailDirect('${p.id}')" title="E-mail">✉</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteProposta('${p.id}')" title="Excluir">✕</button>
+      </div></td>
+    </tr>`;
+  }).join('');
+}
+
+// ═══ EDIÇÃO INLINE COM DROPDOWN COLORIDO ════════════════════════
+let activeCell=null;
+let activeInlineDD=null;
+
+function startInline(e,td){
+  e.stopPropagation();
+  // Fechar dropdown inline anterior se existir
+  if(activeInlineDD){ activeInlineDD.remove(); activeInlineDD=null; }
+  if(activeCell&&activeCell!==td) finishInline(activeCell);
+
+  const field=td.dataset.field, id=td.dataset.id;
+  const p=propostas.find(x=>x.id===id); if(!p) return;
+  const col=COLS.find(c=>c.key===field);
+  const opts=col?.editOpts||[];
+  const currentVal=p[field]||'';
+
+  activeCell=td;
+  td.classList.add('cell-editing');
+
+  // Criar dropdown colorido diretamente
+  const dd=document.createElement('div');
+  dd.className='cs-dropdown open';
+  dd.style.minWidth='240px';
+
+  // Opção vazia
+  const emptyEl=document.createElement('div');
+  emptyEl.className='cs-option sm';
+  emptyEl.innerHTML=`<span class="cs-dot" style="background:var(--muted2)"></span><span class="cs-label" style="color:var(--muted)">— selecionar</span>`;
+  emptyEl.onclick=(ev)=>{
+    ev.stopPropagation();
+    p[field]=''; saveData(); finishInline(td); renderTable(); toast('Salvo!');
+  };
+  dd.appendChild(emptyEl);
+
+  opts.forEach(opt=>{
+    const info=COR_MAP[opt]||{cls:'c-cinza',dot:'#9ca3af'};
+    const el=document.createElement('div');
+    el.className='cs-option sm'+(opt===currentVal?' selected':'');
+    el.innerHTML=`
+      <span class="cs-dot" style="background:${info.dot}"></span>
+      <span class="badge ${info.cls}" style="font-size:10px;padding:1px 7px">${opt}</span>
+      ${opt===currentVal?'<span class="cs-check">✓</span>':''}`;
+    el.onclick=(ev)=>{
+      ev.stopPropagation();
+      p[field]=opt;
+      if(field==='enviadoCredor'&&opt==='SIM'&&!p.dataEnvio)
+        p.dataEnvio=new Date().toISOString().slice(0,10);
+      if(field==='status'&&p.history)
+        p.history.push({ts:Date.now(),auto:true,text:`Status alterado para: ${opt}`});
+      saveData(); finishInline(td); renderTable(); toast('Salvo!');
+    };
+    dd.appendChild(el);
+  });
+
+  document.body.appendChild(dd);
+  activeInlineDD=dd;
+
+  // Posicionar abaixo da célula
+  const rect=td.getBoundingClientRect();
+  dd.style.top=(rect.bottom+2)+'px';
+  dd.style.left=rect.left+'px';
+
+  // Ajustar se sair da tela
+  requestAnimationFrame(()=>{
+    const r=dd.getBoundingClientRect();
+    if(r.right>window.innerWidth) dd.style.left=(window.innerWidth-r.width-8)+'px';
+    if(r.bottom>window.innerHeight) dd.style.top=(rect.top-r.height-2)+'px';
+  });
+
+  // Fechar ao clicar fora
+  setTimeout(()=>{
+    document.addEventListener('click',function closeInline(ev){
+      if(!dd.contains(ev.target)){
+        dd.remove(); activeInlineDD=null;
+        finishInline(td); renderTable();
+        document.removeEventListener('click',closeInline);
+      }
+    });
+  },0);
+}
+
+function finishInline(td){
+  if(!td)return;
+  td.classList.remove('cell-editing');
+  activeCell=null;
+}
+
+// ═══ SIDE PANEL ══════════════════════════════════════════════════
+function openPanel(id){
+  if(activeCell){finishInline(activeCell);return;}
+  const p=propostas.find(x=>x.id===id);if(!p)return;
+  editId=id;
+  histEntries=p.history?[...p.history]:[{ts:Date.now(),auto:true,text:'Cadastrado'}];
+  fillPanel(p);renderHist();
+  document.getElementById('sp-title').textContent=[p.credor,p.nomeInteressado,p.nomeImovel].filter(Boolean).join(' · ')||'Proposta';
+  document.getElementById('sp-email-btn').style.display='';
+  document.getElementById('sp-mover-wrap').style.display='';
+  document.getElementById('sp-delete-btn').style.display='';
+  document.getElementById('side-overlay').classList.add('open');
+}
+function openNewPanel(){
+  editId=null;
+  histEntries=[{ts:Date.now(),auto:true,text:'Proposta criada'}];
+  clearPanel();
+  document.getElementById('mp-chegada').value=new Date().toISOString().slice(0,10);
+  autoLimite();renderHist();
+  document.getElementById('sp-title').textContent='Nova Proposta';
+  document.getElementById('sp-email-btn').style.display='none';
+  document.getElementById('sp-mover-wrap').style.display='none';
+  document.getElementById('sp-delete-btn').style.display='none';
+  document.getElementById('side-overlay').classList.add('open');
+}
+function closePanel(){
+  document.getElementById('side-overlay').classList.remove('open');
+  editId=null;
+}
+function clearPanel(){
+  const defs={'mp-status':'Recebido e-mail','mp-parceiro':'Sim','mp-pagto':'À vista','mp-pct':'5'};
+  ['mp-status','mp-credor','mp-parceiro','mp-enviado','mp-dataEnvio','mp-retInt',
+   'mp-nome','mp-email','mp-nomeIm','mp-link','mp-mat','mp-vlL','mp-vlP','mp-des',
+   'mp-pagto','mp-pagtoObs','mp-pct','mp-com','mp-chegada','mp-limite'].forEach(id=>{
+    const el=document.getElementById(id);if(!el)return;el.value=defs[id]||'';
+  });
+  togglePagtoObs();
+  // Reset selects coloridos para defaults
+  csVals = { status:'Recebido e-mail', enviado:'', retint:'' };
+  initCSSelects();
+}
+function fillPanel(p){
+  const s=(id,v)=>{const el=document.getElementById(id);if(el&&v!=null)el.value=v;};
+  // Campos de texto/input normais
+  s('mp-credor',    p.credor);
+  s('mp-parceiro',  p.parceiro||'Sim');
+  s('mp-dataEnvio', p.dataEnvio);
+  s('mp-nome',      p.nomeInteressado);
+  s('mp-email',     p.emailInteressado);
+  s('mp-nomeIm',    p.nomeImovel);
+  s('mp-link',      p.linkImovel);
+  s('mp-mat',       p.matricula);
+  s('mp-pagtoObs',  p.pagtoObs);
+  s('mp-pct',       p.pct||5);
+  s('mp-chegada',   p.dataChegada);
+  s('mp-limite',    p.dataLimite);
+
+  // Valores formatados com separadores
+  const fmtNum = v => v ? Number(v).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}) : '';
+  s('mp-vlL', fmtNum(p.valorLeilao));
+  s('mp-vlP', fmtNum(p.valorProposta));
+  s('mp-des', p.desagio ? p.desagio.toFixed(2)+'%' : '');
+
+  // Comissão calculada
+  const vP = Number(p.valorProposta)||0;
+  const pct = Number(p.pct)||5;
+  const comEl = document.getElementById('mp-com');
+  if(comEl) comEl.value = vP>0 ? fmt(vP*pct/100) : (p.comissao ? fmt(p.comissao) : '');
+
+  // Forma de pagamento
+  const pagto = p.formaPagto||'A vista';
+  const pagtoEl = document.getElementById('mp-pagto');
+  if(pagtoEl){
+    if(pagto.toLowerCase().includes('financ')) pagtoEl.value='Financiado';
+    else if(pagto.toLowerCase().includes('vista')) pagtoEl.value='\u00C0 vista';
+    else pagtoEl.value = pagto;
+  }
+  togglePagtoObs();
+
+  // Selects coloridos — usar valores reais da proposta
+  csVals = {
+    status:  p.status              || 'Recebido e-mail',
+    enviado: p.enviadoCredor       || '',
+    retint:  p.retornoInteressado  || '',
+  };
+  initCSSelects();
+
+  // Recalcular após preencher
+  setTimeout(calcAuto, 0);
+}
+function calcAuto(){
+  const l=parseVal(document.getElementById('mp-vlL').value);
+  const p=parseVal(document.getElementById('mp-vlP').value);
+  const pct=parseFloat(document.getElementById('mp-pct').value)||5;
+  if(l>0&&p>0){
+    const des=(l-p)/l*100;
+    const comVal=p*pct/100;
+    document.getElementById('mp-des').value=des.toFixed(2)+'%'; // mostra 0.00% quando igual
+    document.getElementById('mp-com').value=fmt(comVal);
+    // Auto-sugerir enviado ao credor com base no deságio (só se ainda não definido)
+    if(!csVals.enviado||csVals.enviado==='A ser enviado'||csVals.enviado==='Valor abaixo - Não Enviar'){
+      const sugestao = des<30?'A ser enviado':'Valor abaixo - Não Enviar';
+      csVals.enviado = sugestao;
+      buildCS('cs-enviado', OPTS_ENVIADO, sugestao, v=>{ csVals.enviado=v; onEnviadoChange(v); });
+    }
+  } else if(p>0){
+    document.getElementById('mp-com').value=fmt(p*pct/100);
+  }
+}
+function autoLimite(){
+  const d=document.getElementById('mp-chegada').value;if(!d)return;
+  const dt=new Date(d+'T00:00:00');dt.setDate(dt.getDate()+7);
+  document.getElementById('mp-limite').value=dt.toISOString().slice(0,10);
+}
+function onEnviadoChange(val){
+  if(val==='SIM'){
+    const el=document.getElementById('mp-dataEnvio');
+    if(el&&!el.value) el.value=new Date().toISOString().slice(0,10);
+  }
+}
+function togglePagtoObs(){
+  const v=document.getElementById('mp-pagto').value;
+  document.getElementById('pagto-obs-row').style.display=(v==='Financiado'||v==='Outro')?'grid':'none';
+}
+function renderHist(){
+  const log=document.getElementById('sp-hist-log');if(!log)return;
+  if(!histEntries.length){log.innerHTML='<span style="color:var(--muted);font-size:12px">Nenhuma atividade.</span>';return;}
+  // Ordem cronológica: mais antigo no topo, mais novo embaixo
+  log.innerHTML=[...histEntries].map(e=>{
+    if(e.auto)return`<div class="act-auto">${e.text}<span class="act-ts">${fmtDT(e.ts)}</span></div>`;
+    return`<div class="act-comment">
+      <div class="act-avatar">FR</div>
+      <div class="act-bubble"><p>${e.text}</p><span class="act-ts">${fmtDT(e.ts)}</span></div>
+    </div>`;
+  }).join('');
+  // Scroll para o final (mais recente)
+  log.scrollTop = log.scrollHeight;
+}
+function addHist(){
+  const inp=document.getElementById('sp-hist-inp');
+  const txt=inp.value.trim();if(!txt)return;
+  histEntries.push({ts:Date.now(),auto:false,text:txt});
+  inp.value='';inp.style.height='auto';renderHist();
+  // Se está editando uma proposta existente, salva o histórico imediatamente
+  if(editId){
+    const p=propostas.find(x=>x.id===editId);
+    if(p){p.history=[...histEntries];saveData();}
+  }
+}
+// Cria contato se não existir, ou atualiza nome se o e-mail já estiver cadastrado
+function upsertContato(nome, email, tel){
+  if(!email) return;
+  const emailLow = email.toLowerCase().trim();
+  const existing = contatos.find(c=>c.email.toLowerCase()===emailLow);
+  if(existing){
+    if(nome && existing.nome !== nome) existing.nome = nome;
+    if(tel && !existing.tel) existing.tel = tel; // salva tel se ainda não tinha
+  } else {
+    contatos.push({id:uid(), nome:nome||'', email:emailLow, tel:tel||'', obs:''});
+  }
+  saveData();
+}
+
+function saveProposta(){
+  const g=id=>(document.getElementById(id)?.value||'').trim();
+  const l=parseVal(g('mp-vlL')),p=parseVal(g('mp-vlP')),pct=parseFloat(g('mp-pct'))||5;
+  const nome=g('mp-nome');
+  if(!nome){toast('Informe o nome do interessado',true);return;}
+  const email=g('mp-email');
+  const tel=g('mp-tel')||'';
+  upsertContato(nome, email, tel);
+  const des=l>0&&p>0?(l-p)/l*100:0;
+  const data={
+    status:csVals.status,credor:g('mp-credor'),parceiro:g('mp-parceiro'),
+    enviadoCredor:csVals.enviado,dataEnvio:g('mp-dataEnvio'),
+    retornoInteressado:csVals.retint,nomeInteressado:nome,emailInteressado:email,
+    nomeImovel:g('mp-nomeIm'),linkImovel:g('mp-link'),
+    valorLeilao:l,valorProposta:p,desagio:des,
+    formaPagto:g('mp-pagto'),pagtoObs:g('mp-pagtoObs'),pct,comissao:p*pct/100,
+    dataChegada:g('mp-chegada'),dataLimite:g('mp-limite'),matricula:g('mp-mat'),
+    retornoCredor:'',retornoIntObs:'',history:[...histEntries]
+  };
+  if(editId){
+    const idx=propostas.findIndex(x=>x.id===editId);
+    if(idx>=0)propostas[idx]={...propostas[idx],...data};
+  } else {
+    // Verificar matrícula duplicada antes de adicionar
+    const mat = data.matricula ? data.matricula.replace(/\s/g,'').toLowerCase() : '';
+    if(mat){
+      const duplicatas = propostas.filter(p=>{
+        const pm = (p.matricula||'').replace(/\s/g,'').toLowerCase();
+        return pm && pm === mat;
+      });
+      if(duplicatas.length > 0){
+        const nomes = duplicatas.map(p=>p.nomeInteressado||'—').join(', ');
+        // Aviso mas salva normalmente
+        setTimeout(()=>{
+          showAlert(
+            '⚠️ Matrícula já cadastrada',
+            `O imóvel de matrícula <strong>${data.matricula}</strong> já possui ${duplicatas.length} proposta(s) cadastrada(s):<br><br>` +
+            duplicatas.map(p=>`• <strong>${p.nomeInteressado||'—'}</strong> — ${p.status||'—'}`).join('<br>') +
+            '<br><br>A nova proposta foi salva normalmente.'
+          );
+        }, 300);
+      }
+    }
+    propostas.push({id:uid(),...data});
+  }
+  saveData();closePanel();renderTable();
+  toast(editId?'Proposta atualizada!':'Proposta adicionada!');
+}
+function deleteFromPanel(){
+  if(!editId) return;
+  if(!confirm('Excluir esta proposta?')) return;
+  propostas = propostas.filter(p=>p.id!==editId);
+  saveData(); closePanel(); renderTable();
+  toast('Proposta excluída.');
+}
+
+function deleteProposta(id){
+  if(!confirm('Excluir esta proposta?'))return;
+  propostas=propostas.filter(p=>p.id!==id);saveData();renderTable();toast('Removida.');
+}
+
+// ═══ AUTOCOMPLETE ════════════════════════════════════════════════
+function acSearch(){
+  const q=document.getElementById('mp-nome').value.toLowerCase();
+  const list=document.getElementById('ac-list');acIdx=-1;
+  if(!q){list.classList.remove('open');return;}
+  const m=contatos.filter(c=>c.nome.toLowerCase().includes(q)||c.email.toLowerCase().includes(q)).slice(0,8);
+  if(!m.length){list.classList.remove('open');return;}
+  list.innerHTML=m.map(c=>`<div class="ac-item" data-e="${c.email}" data-n="${c.nome}" onclick="acSel(this)">${c.nome}<small>${c.email}</small></div>`).join('');
+  list.classList.add('open');
+}
+function acSel(el){document.getElementById('mp-nome').value=el.dataset.n;document.getElementById('mp-email').value=el.dataset.e;document.getElementById('ac-list').classList.remove('open');}
+function acKey(e){
+  const list=document.getElementById('ac-list');const items=list.querySelectorAll('.ac-item');if(!items.length)return;
+  if(e.key==='ArrowDown')acIdx=Math.min(acIdx+1,items.length-1);
+  else if(e.key==='ArrowUp')acIdx=Math.max(acIdx-1,0);
+  else if(e.key==='Enter'&&acIdx>=0){acSel(items[acIdx]);e.preventDefault();return;}
+  else if(e.key==='Escape'){list.classList.remove('open');return;}
+  items.forEach((it,i)=>it.classList.toggle('sel',i===acIdx));
+}
+document.addEventListener('click',e=>{if(!e.target.closest('.ac-wrap'))document.getElementById('ac-list').classList.remove('open');});
+
+// ═══ EMAIL ══════════════════════════════════════════════════════
+// Assinatura para e-mails ao interessado (Equipe)
+const ASSIN = `Atenciosamente,
+Equipe Leiloaria Smart
+📞 (11) 3136-0640 | 🟢 WhatsApp: (11) 94303-7997
+✉️ canaldireto@leiloariasmart.com.br
+🌐 www.leiloariasmart.com.br`;
+
+// Assinatura para envio ao credor (Felipe Reis)
+const ASSIN_CREDOR = `Atenciosamente,
+Felipe Reis | Leiloaria Smart
+📞 (11) 3136-0640 | 🟢 WhatsApp: (11) 94303-7997
+✉️ canaldireto@leiloariasmart.com.br
+🌐 www.leiloariasmart.com.br`;
+
+// Helper: pega só o primeiro nome
+const primeiroNome = (p) => (p.nomeInteressado||'').split(' ')[0] || 'prezado(a)';
+
+// Helper: saudação por horário
+const saudacao = () => new Date().getHours() < 12 ? 'bom dia' : 'boa tarde';
+
+// Grupos de templates
+const EMAIL_GRUPOS = [
+  {
+    nome: 'Acuse de Recebimento',
+    subtabs: [
+      {
+        label: 'Padrão 5 dias',
+        fn: (p) => ({
+          assunto: `Proposta recebida — ${p.nomeImovel||'imóvel'}`,
+          corpo: `Prezado(a) ${primeiroNome(p)}, ${saudacao()}!
+
+Confirmamos o recebimento de sua proposta no imóvel de matrícula ${p.matricula||'[matrícula]'}. A proposta será encaminhada ao credor para análise.
+
+O prazo padrão para retorno é de até 05 (cinco) dias úteis, podendo variar de acordo com a apreciação do credor. Assim que tivermos um posicionamento, entraremos em contato com as informações necessárias, seja para dar continuidade às tratativas ou para orientar sobre os próximos passos.
+
+Permanecemos à disposição.
+
+${ASSIN}`
+        })
+      },
+      {
+        label: 'Cliente novo (7 dias)',
+        fn: (p) => ({
+          assunto: `Proposta recebida — ${p.nomeImovel||'imóvel'}`,
+          corpo: `Prezado(a) ${primeiroNome(p)}, ${saudacao()}!
+
+Acusamos o recebimento de sua proposta no imóvel de matrícula ${p.matricula||'[matrícula]'}.Informamos que, por se tratar de um credor que ainda não integra nossa base de relacionamento, estamos em processo de tentativa de contato com o mesmo para viabilizar o repasse da sua proposta.
+
+Solicitamos a gentileza de aguardar o prazo de até 07 (sete) dias úteis, período no qual retornaremos com um posicionamento: seja com a confirmação de avanço nas tratativas com o credor ou, caso contrário, com as devidas orientações sobre os próximos passos, a fim de que sua intenção de aquisição não seja prejudicada.
+
+Agradecemos pela confiança depositada na Leiloaria Smart.
+
+${ASSIN}`
+        })
+      },
+      {
+        label: 'Sem retorno do credor',
+        fn: (p) => ({
+          assunto: `Atualização — proposta ${p.nomeImovel||'imóvel'}`,
+          corpo: `Olá ${primeiroNome(p)}, ${saudacao()}!
+
+A proposta envolve um credor novo e, apesar de diversas tentativas de contato por todos os canais, ainda não obtivemos retorno dos responsáveis.
+
+Como já se passou um período considerável e para não prejudicar seus investimentos, achamos importante te atualizar neste momento. Seguiremos tentando o contato e, assim que houver qualquer novidade, te informamos. Enquanto isso, fique à vontade para encerrar esse fluxo ou seguir com novos investimentos.
+
+Permanecemos à disposição.
+
+${ASSIN}`
+        })
+      },
+      {
+        label: 'Contato esgotado',
+        fn: (p) => ({
+          assunto: `Encerramento de fluxo — ${p.nomeImovel||'imóvel'}`,
+          corpo: `Olá ${primeiroNome(p)}, ${saudacao()}!
+
+Conforme informado, realizamos todas as tentativas de contato com o credor. Entretanto, até o momento não obtivemos retorno, o que impossibilitou o avanço da sua proposta.
+
+Lamentamos que não tenha sido possível seguir com este processo desta vez, mas permanecemos totalmente à disposição para auxiliar em novas oportunidades e propostas futuras.
+
+Agradecemos pela compreensão e pelo interesse.
+
+${ASSIN}`
+        })
+      },
+    ]
+  },
+  {
+    nome: 'Info Faltante',
+    subtabs: [
+      {
+        label: '📎 Link do imóvel',
+        fn: (p) => ({
+          assunto: `Informação pendente — link do imóvel`,
+          corpo: `Prezado(a) ${primeiroNome(p)}, ${saudacao()}!
+
+Gentileza encaminhar o link do imóvel em questão, para que possamos dar prosseguimento à proposta junto ao credor.
+
+Fico no aguardo do retorno.
+
+${ASSIN}`
+        })
+      },
+      {
+        label: '💳 Forma de pagamento',
+        fn: (p) => ({
+          assunto: `Informação pendente — forma de pagamento`,
+          corpo: `Olá ${primeiroNome(p)}, ${saudacao()}!
+
+Para darmos sequência na análise junto ao credor, é necessário que a proposta contenha a forma de pagamento detalhada (à vista, financiada ou parcelada, especificando valores e prazos).
+
+Assim que possível, peço que nos encaminhe essa informação atualizada.
+
+Fico no aguardo.
+
+${ASSIN}`
+        })
+      },
+      {
+        label: '% Comissão do leiloeiro',
+        fn: (p) => ({
+          assunto: `Informação pendente — comissão do leiloeiro`,
+          corpo: `Prezado(a) ${primeiroNome(p)}, ${saudacao()}!
+
+Agradeço o envio da proposta.
+
+Para prosseguirmos com a análise, é necessário que conste de forma expressa a comissão do leiloeiro, equivalente a 5% sobre o valor ofertado.
+
+Peço, por gentileza, que a proposta seja reenviada com essa informação ajustada, para que possamos encaminhar ao credor.
+
+${ASSIN}`
+        })
+      },
+    ]
+  },
+  {
+    nome: 'Envio ao Credor',
+    subtabs: [
+      {
+        label: '📤 Envio padrão',
+        fn: (p) => ({
+          assunto: `Proposta em Ativo Imobiliário | ${p.credor||'Credor'} | ${p.nomeImovel||'Imóvel'} | VGV R$ ${p.valorProposta?Number(p.valorProposta).toLocaleString('pt-BR'):''}`,
+          corpo: `Boa tarde, tudo bem?
+
+Sou Felipe Reis, da equipe comercial da Leiloaria Smart, e entro em contato para tratar do direcionamento de uma proposta já formalizada referente a um ativo imobiliário vinculado ao ${p.credor||'[credor]'}, respeitando integralmente os procedimentos e critérios da instituição.
+
+Seguem abaixo os dados para localização do imóvel:
+
+• Matrícula: ${p.matricula||'[matrícula]'}
+• Imóvel: ${p.nomeImovel||'[endereço do imóvel]'}
+• Proposta: ${p.valorProposta?'R$ '+Number(p.valorProposta).toLocaleString('pt-BR',{minimumFractionDigits:2}):''} — ${p.formaPagto||''}${p.pagtoObs?' ('+p.pagtoObs+')':''}
+• Comissão do leiloeiro: ${p.pct||5}% sobre o valor da arrematação
+
+Esse é o tipo de operação que conseguimos gerar em escala. O Grupo Smart reúne um ecossistema robusto, com foco total em liquidez de ativos judiciais e extrajudiciais:
+
+• Mais de R$ 800 milhões investidos por nossos clientes apenas em 2025
+• 4.000+ arrematações no ano
+• Comunidade com mais de 10 mil compradores ativos
+• Time dedicado de pós-arrematação, atuando até a efetiva transferência da matrícula
+
+Estamos à disposição para colaborar com estratégia, agilidade e alcance.
+
+Caso faça sentido, proponho uma breve conversa para alinharmos os próximos passos.
+
+Se o tema estiver sob responsabilidade de outra área, agradeço desde já se puder indicar o contato responsável.
+
+${ASSIN_CREDOR}`
+        })
+      },
+    ]
+  },
+  {
+    nome: 'Contra Proposta',
+    subtabs: [
+      {
+        label: '↩ Repassar contra ao interessado',
+        fn: (p) => ({
+          assunto: `Atualização — contra proposta | ${p.nomeImovel||'imóvel'}`,
+          corpo: `Olá ${primeiroNome(p)}, ${saudacao()}!
+
+Tivemos retorno do credor ${p.credor||''} com uma contra proposta.
+
+• Valor da contra proposta: R$ [VALOR DA CONTRA]
+• Condições: [CONDIÇÕES DO CREDOR]
+
+Ficamos no aguardo do seu retorno quanto a uma nova proposta nos valores indicados ou encerramento do fluxo.
+
+${ASSIN}`
+        })
+      },
+      {
+        label: '↩ Aguardando retorno do interessado',
+        fn: (p) => ({
+          assunto: `Aguardando retorno — ${p.nomeImovel||'imóvel'}`,
+          corpo: `Olá ${primeiroNome(p)}, ${saudacao()}!
+
+Passamos para verificar se houve alguma definição quanto à contra proposta enviada pelo credor ${p.credor||''}.
+
+Ficamos no aguardo do seu posicionamento para darmos continuidade ou encerrarmos o fluxo.
+
+${ASSIN}`
+        })
+      },
+    ]
+  },
+  {
+    nome: 'Negativas',
+    subtabs: [
+      {
+        label: '🟥 Recusada sem contraproposta',
+        fn: (p) => ({
+          assunto: `Retorno — proposta ${p.nomeImovel||'imóvel'}`,
+          corpo: `Olá ${primeiroNome(p)}, ${saudacao()}!
+
+Tivemos retorno do credor, porém a proposta enviada não foi aprovada e o banco não apresentou contraproposta.
+
+Ficamos à disposição para o envio de novas oportunidades.
+
+${ASSIN}`
+        })
+      },
+      {
+        label: '🟧 Recusada, aceita novas propostas',
+        fn: (p) => ({
+          assunto: `Retorno — proposta ${p.nomeImovel||'imóvel'}`,
+          corpo: `Olá ${primeiroNome(p)}, ${saudacao()}!
+
+O credor analisou a proposta apresentada, porém não aprovou nos valores ofertados.
+
+O imóvel permanece disponível e o credor segue aberto à análise de novas propostas.
+
+${ASSIN}`
+        })
+      },
+      {
+        label: '🟨 Imóvel em leilão',
+        fn: (p) => ({
+          assunto: `Retorno — proposta ${p.nomeImovel||'imóvel'}`,
+          corpo: `Olá ${primeiroNome(p)}, ${saudacao()}!
+
+O credor informou que, no momento, o imóvel encontra-se em fase de leilão e não está analisando propostas.
+
+Após o encerramento do leilão, o credor poderá reavaliar o recebimento de propostas, caso o imóvel não seja arrematado.
+
+${ASSIN}`
+        })
+      },
+      {
+        label: '🟦 Imóvel arrematado',
+        fn: (p) => ({
+          assunto: `Retorno — proposta ${p.nomeImovel||'imóvel'}`,
+          corpo: `Olá ${primeiroNome(p)}, ${saudacao()}!
+
+Recebemos retorno do credor informando que o imóvel foi arrematado em leilão, não estando mais disponível para negociação.
+
+${ASSIN}`
+        })
+      },
+      {
+        label: '🟩 Imóvel já comercializado',
+        fn: (p) => ({
+          assunto: `Retorno — proposta ${p.nomeImovel||'imóvel'}`,
+          corpo: `Olá ${primeiroNome(p)}, ${saudacao()}!
+
+Tivemos retorno do credor, o mesmo nos informou que o imóvel já foi comercializado e não se encontra mais disponível para negociação.
+
+Permanecemos à disposição para outras oportunidades.
+
+${ASSIN}`
+        })
+      },
+      {
+        label: '🟪 Em tratativa com outro comprador',
+        fn: (p) => ({
+          assunto: `Retorno — proposta ${p.nomeImovel||'imóvel'}`,
+          corpo: `Olá ${primeiroNome(p)}, ${saudacao()}!
+
+No momento, o imóvel encontra-se em tratativa com outro interessado, conforme informado pelo credor.
+
+Caso a negociação não seja concluída, poderemos retomar o contato.
+
+${ASSIN}`
+        })
+      },
+      {
+        label: '🟫 Leilão suspenso',
+        fn: (p) => ({
+          assunto: `Retorno — proposta ${p.nomeImovel||'imóvel'}`,
+          corpo: `Olá ${primeiroNome(p)}, ${saudacao()}!
+
+O credor informou que o leilão do imóvel encontra-se suspenso.
+
+Ficamos à disposição para novas propostas.
+
+${ASSIN}`
+        })
+      },
+      {
+        label: '⬛ Valor abaixo do mínimo',
+        fn: (p) => ({
+          assunto: `Retorno — proposta ${p.nomeImovel||'imóvel'}`,
+          corpo: `Olá ${primeiroNome(p)}, ${saudacao()}!
+
+Tivemos retorno do credor, e informou que a proposta apresentada ficou abaixo do valor mínimo aceitável para este imóvel. Porém não apresentou uma contraproposta.
+
+Ficamos à disposição para uma nova proposta.
+
+${ASSIN}`
+        })
+      },
+      {
+        label: '🔵 Forma de pagamento recusada',
+        fn: (p) => ({
+          assunto: `Retorno — proposta ${p.nomeImovel||'imóvel'}`,
+          corpo: `Olá ${primeiroNome(p)}, ${saudacao()}!
+
+O credor não aprovou a proposta apresentada em função da forma de pagamento informada.
+
+Ficamos à disposição para uma nova proposta conforme as condições exigidas pelo credor.
+
+${ASSIN}`
+        })
+      },
+      {
+        label: '🟢 Imóvel retirado pelo credor',
+        fn: (p) => ({
+          assunto: `Retorno — proposta ${p.nomeImovel||'imóvel'}`,
+          corpo: `Olá ${primeiroNome(p)}, ${saudacao()}!
+
+O credor informou que o imóvel foi retirado de comercialização no momento, não estando disponível para novas propostas.
+
+Seguimos à disposição para outras oportunidades.
+
+${ASSIN}`
+        })
+      },
+      {
+        label: '🔴 Lance ativo na plataforma',
+        fn: (p) => ({
+          assunto: `Retorno — proposta ${p.nomeImovel||'imóvel'}`,
+          corpo: `Olá ${primeiroNome(p)}, ${saudacao()}!
+
+Informo que o imóvel para o qual você demonstrou interesse e apresentou proposta, já se encontra com lance ativo em plataforma de leiloeiro terceiro.
+
+O credor nos orientou que não irá avaliar propostas com valores inferiores ao lance vigente na plataforma de leilão.
+
+Ficamos à disposição.
+
+${ASSIN}`
+        })
+      },
+      {
+        label: '⭕ Valor muito abaixo',
+        fn: (p) => ({
+          assunto: `Retorno — proposta ${p.nomeImovel||'imóvel'}`,
+          corpo: `Olá ${primeiroNome(p)}, ${saudacao()}!
+
+Agradecemos o envio da sua proposta.
+
+Porém, o valor ofertado está muito abaixo do valor de referência do leilão, o que inviabiliza a sua apreciação neste momento.
+
+Permanecemos à disposição para analisar uma nova proposta que esteja mais alinhada às condições atuais.
+
+${ASSIN}`
+        })
+      },
+    ]
+  },
+];
+
+let emailGrupo = 0;
+let emailSubtab = 0;
+
+function openEmailFromPanel(){ if(editId) openEmailDirect(editId); }
+function openEmailDirect(id){
+  emailP=propostas.find(p=>p.id===id);if(!emailP)return;
+  emailGrupo=0; emailSubtab=0;
+  document.getElementById('email-meta').innerHTML=`
+    <div style="color:var(--muted)">Para: <strong style="color:var(--text)">${emailP.emailInteressado||'—'}</strong></div>
+    <div style="color:var(--muted)">Interessado: <strong style="color:var(--text)">${emailP.nomeInteressado||'—'}</strong></div>
+    <div style="color:var(--muted)">Imóvel: <strong style="color:var(--text)">${emailP.nomeImovel||'—'}</strong></div>
+    <div style="color:var(--muted)">Credor: <strong style="color:var(--text)">${emailP.credor||'—'}</strong></div>`;
+  renderEmailGroups();
+  renderEmailSubtabs();
+  renderEmailPrev();
+  document.getElementById('modal-email').classList.add('open');
+}
+
+function setGroup(i){
+  emailGrupo=i; emailSubtab=0;
+  renderEmailGroups();
+  renderEmailSubtabs();
+  renderEmailPrev();
+}
+function setSubtab(i){
+  emailSubtab=i;
+  renderEmailSubtabs();
+  renderEmailPrev();
+}
+function renderEmailGroups(){
+  document.querySelectorAll('.email-group-btn').forEach((btn,i)=>{
+    btn.classList.toggle('active', i===emailGrupo);
+  });
+}
+function renderEmailSubtabs(){
+  const grupo = EMAIL_GRUPOS[emailGrupo];
+  const container = document.getElementById('email-subtabs');
+  container.innerHTML = grupo.subtabs.map((st,i)=>
+    `<button class="email-subtab ${i===emailSubtab?'active':''}" onclick="setSubtab(${i})">${st.label}</button>`
+  ).join('');
+}
+function getEmailContent(){
+  const grupo = EMAIL_GRUPOS[emailGrupo];
+  const sub = grupo.subtabs[emailSubtab];
+  return sub.fn(emailP||{});
+}
+function renderEmailPrev(){
+  const t=getEmailContent();
+  document.getElementById('email-prev').textContent=`Assunto: ${t.assunto}
+
+${t.corpo}`;
+}
+function copyEmail(){
+  const t=getEmailContent();
+  navigator.clipboard.writeText(`Assunto: ${t.assunto}
+
+${t.corpo}`).then(()=>toast('Copiado!'));
+}
+function openMail(){
+  const t=getEmailContent();
+  const dest = emailP?.emailInteressado||'';
+  window.open(`mailto:${dest}?subject=${encodeURIComponent(t.assunto)}&body=${encodeURIComponent(t.corpo)}`);
+}
+
+// ═══ CONTATOS ════════════════════════════════════════════════════
+function getContatoStats(email){
+  let total=0, positivas=0;
+  const emailLow=(email||'').toLowerCase();
+  Object.values(ABAS).forEach(aba=>{
+    try{
+      const ps=JSON.parse(localStorage.getItem(aba.sk))||[];
+      ps.forEach(p=>{
+        if((p.emailInteressado||'').toLowerCase()===emailLow){
+          total++;
+          if(p.status==='Positivo'||p.status==='Vendido/Suspenso') positivas++;
+        }
+      });
+    }catch{}
+  });
+  return {total, positivas};
+}
+
+function renderContatos(){
+  const q=(document.getElementById('search-c')?.value||'').toLowerCase();
+  const list=contatos.filter(ct=>!q||ct.nome.toLowerCase().includes(q)||ct.email.toLowerCase().includes(q));
+  document.getElementById('contacts-count').textContent=`${list.length} contato${list.length!==1?'s':''}`;
+  const grid=document.getElementById('contacts-grid');const empty=document.getElementById('contacts-empty');
+  if(!list.length){grid.innerHTML='';empty.style.display='block';return;}
+  empty.style.display='none';
+  grid.innerHTML=list.map(ct=>{
+    const st=getContatoStats(ct.email);
+    const statsHtml=st.total>0?`
+      <div style="display:flex;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+        <div style="flex:1;text-align:center;background:var(--bg3);border-radius:6px;padding:7px 4px">
+          <div style="font-size:17px;font-weight:700;color:var(--accent)">${st.total}</div>
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Propostas</div>
+        </div>
+        <div style="flex:1;text-align:center;background:var(--bg3);border-radius:6px;padding:7px 4px">
+          <div style="font-size:17px;font-weight:700;color:var(--green)">${st.positivas}</div>
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Aceitas</div>
+        </div>
+        <div style="flex:1;text-align:center;background:var(--bg3);border-radius:6px;padding:7px 4px">
+          <div style="font-size:17px;font-weight:700;color:${st.positivas>0?'var(--yellow)':'var(--muted)'}">
+            ${st.total>0?Math.round(st.positivas/st.total*100):0}%
+          </div>
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Taxa</div>
+        </div>
+      </div>`
+    :`<div style="margin-top:8px;font-size:11px;color:var(--muted);padding-top:8px;border-top:1px solid var(--border)">Nenhuma proposta ainda</div>`;
+
+    return`<div class="c-card">
+      <div class="c-name">${ct.nome}</div>
+      <a href="mailto:${ct.email}" class="c-email">${ct.email}</a>
+      ${ct.tel?`<div class="c-meta" style="margin-top:5px">📞 ${ct.tel}</div>`:''}
+      ${ct.obs?`<div class="c-meta" style="margin-top:4px">${ct.obs}</div>`:''}
+      ${statsHtml}
+      <div class="c-actions" style="margin-top:10px">
+        <button class="btn btn-ghost btn-sm" onclick="openContatoModal('${ct.id}')">Editar</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteContato('${ct.id}')">Excluir</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+function openContatoModal(id){
+  editCId=id||null;
+  document.getElementById('mc-title').textContent=id?'Editar Contato':'Novo Contato';
+  if(id){const c=contatos.find(x=>x.id===id);if(c){document.getElementById('mc-nome').value=c.nome;document.getElementById('mc-email').value=c.email;document.getElementById('mc-tel').value=c.tel||'';document.getElementById('mc-obs').value=c.obs||'';}}
+  else['mc-nome','mc-email','mc-tel','mc-obs'].forEach(i=>{document.getElementById(i).value='';});
+  document.getElementById('modal-c').classList.add('open');
+}
+function saveContato(){
+  const nome=document.getElementById('mc-nome').value.trim();const email=document.getElementById('mc-email').value.trim();
+  if(!nome||!email){toast('Nome e e-mail obrigatórios',true);return;}
+  const data={nome,email,tel:document.getElementById('mc-tel').value.trim(),obs:document.getElementById('mc-obs').value.trim()};
+  if(editCId){const idx=contatos.findIndex(c=>c.id===editCId);if(idx>=0)contatos[idx]={...contatos[idx],...data};}
+  else contatos.push({id:uid(),...data});
+  saveData();document.getElementById('modal-c').classList.remove('open');renderContatos();toast(editCId?'Atualizado!':'Adicionado!');
+}
+function deleteContato(id){if(!confirm('Excluir?'))return;contatos=contatos.filter(c=>c.id!==id);saveData();renderContatos();toast('Removido.');}
+
+// ═══ IA ══════════════════════════════════════════════════════════
+function openIAModal(){document.getElementById('modal-ia').classList.add('open');document.getElementById('ia-st').textContent='';}
+function iaDragOver(e){e.preventDefault();document.getElementById('ia-drop').classList.add('over');}
+function iaDrop(e){e.preventDefault();document.getElementById('ia-drop').classList.remove('over');const f=e.dataTransfer.files[0];if(f)processFile(f);}
+function iaProcess(e){const f=e.target.files[0];if(f)processFile(f);e.target.value='';}
+async function processFile(file){
+  const st=document.getElementById('ia-st');
+  const isPDF=file.type==='application/pdf'||file.name?.toLowerCase().endsWith('.pdf');
+  st.innerHTML='<span class="ia-spin"></span> Lendo '+(isPDF?'PDF':'imagem')+' e extraindo dados...';
+  try{
+    const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});
+    const mediaType=isPDF?'application/pdf':(file.type||'image/png');
+    const contentBlock=isPDF
+      ?{type:'document',source:{type:'base64',media_type:mediaType,data:b64}}
+      :{type:'image',source:{type:'base64',media_type:mediaType,data:b64}};
+    const body={model:'claude-sonnet-4-6',max_tokens:1000,messages:[{role:'user',content:[
+      contentBlock,
+      {type:'text',text:'Extraia dados desta proposta de imóvel. Retorne APENAS JSON:\n{"nomeInteressado":"","emailInteressado":"","nomeImovel":"","linkImovel":"","credor":"","valorLeilao":0,"valorProposta":0,"formaPagto":"","pagtoObs":"","matricula":"","observacoes":""}'}
+    ]}]};
+    const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const data=await res.json();
+    if(data.error)throw new Error(data.error.message);
+    const txt=data.content?.find(b=>b.type==='text')?.text||'{}';
+    const json=JSON.parse(txt.replace(/```json?|```/g,'').trim());
+    document.getElementById('modal-ia').classList.remove('open');
+    openNewPanel();
+    const set=(id,v)=>{const el=document.getElementById(id);if(el&&v)el.value=v;};
+    set('mp-nome',json.nomeInteressado);set('mp-email',json.emailInteressado);
+    set('mp-nomeIm',json.nomeImovel);set('mp-link',json.linkImovel);set('mp-credor',json.credor);
+    if(json.valorLeilao)document.getElementById('mp-vlL').value=fmt(json.valorLeilao);
+    if(json.valorProposta)document.getElementById('mp-vlP').value=fmt(json.valorProposta);
+    if(json.formaPagto)document.getElementById('mp-pagto').value=json.formaPagto.toLowerCase().includes('financ')?'Financiado':'À vista';
+    set('mp-pagtoObs',json.pagtoObs);set('mp-mat',json.matricula);
+    if(json.observacoes)histEntries.push({ts:Date.now(),auto:true,text:'Importado: '+json.observacoes});
+    calcAuto();togglePagtoObs();renderHist();
+    toast('Dados extraídos! Revise e salve.');
+  }catch(err){st.innerHTML='❌ Erro ao processar. Preencha manualmente.';console.error(err);}
+}
+
+// ═══ COLAR DO SHEETS ═══════════════════════════════════════════════
+// Mapa de nomes de colunas do Sheets para chaves do app
+const SHEETS_MAP = {
+  // Status
+  'status': 'status',
+  // Credor
+  'credor': 'credor',
+  // Parceiro — exato do Sheets: "Parceiro?"
+  'parceiro?': 'parceiro', 'parceiro': 'parceiro',
+  // Enviado ao credor — exato do Sheets: "Enviado ao credor"
+  'enviado ao credor': 'enviadoCredor', 'enviado credor': 'enviadoCredor',
+  'enviado ao banco': 'enviadoCredor', 'enviado': 'enviadoCredor',
+  // Data de envio — exato do Sheets: "Data de envio da proposta"
+  'data de envio da proposta': 'dataEnvio',
+  'data de envio': 'dataEnvio', 'data envio': 'dataEnvio',
+  // Retorno ao interessado — exato do Sheets: "Retorno ao interessado"
+  'retorno ao interessado': 'retornoInteressado',
+  'retorno interessado': 'retornoInteressado', 'retorno': 'retornoInteressado',
+  // Nome do interessado — exato do Sheets: "Nome do interessado"
+  'nome do interessado': 'nomeInteressado',
+  'interessado': 'nomeInteressado', 'nome interessado': 'nomeInteressado',
+  'nome': 'nomeInteressado',
+  // Imóvel — exato do Sheets: "Identificação/link do imóvel"
+  'identificação/link do imóvel': 'nomeImovel',
+  'identificação/link': 'nomeImovel',
+  'identificação': 'nomeImovel', 'identificacao': 'nomeImovel',
+  'imóvel': 'nomeImovel', 'imovel': 'nomeImovel',
+  'imóvel / link': 'nomeImovel', 'nome do imóvel': 'nomeImovel',
+  // Link (Hyperlink e-mail no Sheets vira linkImovel)
+  'hyperlink e-mail': 'linkImovel', 'hyperlink': 'linkImovel', 'link': 'linkImovel',
+  'link do imóvel': 'linkImovel',
+  // Valor de Leilão — exato: "Valor de LEILÃO"
+  'valor de leilão': 'valorLeilao', 'valor de leilao': 'valorLeilao',
+  'valor leilão': 'valorLeilao', 'vl. leilão': 'valorLeilao',
+  // Valor da proposta — exato: "Valor da proposta"
+  'valor da proposta': 'valorProposta', 'valor de proposta': 'valorProposta',
+  'valor proposta': 'valorProposta', 'vl. proposta': 'valorProposta',
+  // Deságio — exato: "DESÁGIO %"
+  'deságio %': 'desagio', 'desagio %': 'desagio',
+  'deságio %': 'desagio', 'deságio': 'desagio', 'desagio': 'desagio',
+  // Forma de pagamento — exato: "Forma de pagamento"
+  'forma de pagamento': 'formaPagto', 'pagamento': 'formaPagto',
+  'forma pagamento': 'formaPagto',
+  // Comissão — exato: "Valor da comissão do leiloeiro"
+  'valor da comissão do leiloeiro': 'comissao',
+  'valor de comissão do leiloeiro': 'comissao',
+  'valor da comissão': 'comissao', 'comissão': 'comissao', 'comissao': 'comissao',
+  'valor de comissão': 'comissao', 'valor comissão': 'comissao',
+  // Datas — exato: "Data de chegada da proposta" e "Data limite de retorno"
+  'data de chegada da proposta': 'dataChegada',
+  'data chegada': 'dataChegada', 'data de chegada': 'dataChegada', 'chegada': 'dataChegada',
+  'data limite de retorno': 'dataLimite',
+  'limite retorno': 'dataLimite', 'data limite': 'dataLimite',
+  // Matrícula — exato: "Matricula do imóvel"
+  'matricula do imóvel': 'matricula', 'matrícula do imóvel': 'matricula',
+  'matrícula': 'matricula', 'matricula': 'matricula',
+  // Email — exato: "E-mail do interessado"
+  'e-mail do interessado': 'emailInteressado',
+  'e-mail': 'emailInteressado', 'email': 'emailInteressado',
+  'email do interessado': 'emailInteressado',
+  // Observações
+  'observações': 'obs', 'observacoes': 'obs', 'obs': 'obs',
+  // Retorno credor/interessado
+  'retorno do credor': 'retornoCredor', 'retorno credor': 'retornoCredor',
+  'retorno do interessado': 'retornoIntObs',
+
+  // ── ITAÚ ──
+  'enviado ao itaú': 'enviadoCredor', 'enviado ao itau': 'enviadoCredor',
+  'data de envio ao banco': 'dataEnvio',
+  'negativa enviada ao interessado': 'retornoInteressado',
+  'título clickup/nome do interessado': 'nomeInteressado',
+  'titulo clickup/nome do interessado': 'nomeInteressado',
+  'título clickup': 'nomeInteressado', 'titulo clickup': 'nomeInteressado',
+  'nome do interessado (título clickup)': 'nomeInteressado',
+  'rgi': 'matricula',
+
+  // ── BRADESCO ──
+  'enviado ao bradesco': 'enviadoCredor',
+  'data de envio': 'dataEnvio',
+
+  // ── SANTANDER ──
+  'enviado ao santander': 'enviadoCredor',
+  'data de envio ao banco': 'dataEnvio',
+};
+
+function openPasteModal(){
+  document.getElementById('paste-input').value = '';
+  document.getElementById('paste-preview').style.display = 'none';
+  document.getElementById('modal-paste').classList.add('open');
+}
+
+function parsePaste(raw){
+  const lines = raw.trim().split('\n').filter(l=>l.trim());
+  if(lines.length < 2) return null;
+
+  // Detectar separador (tab = Sheets, ; = CSV)
+  const sep = lines[0].includes('\t') ? '\t' : ';';
+  const headers = lines[0].split(sep).map(h=>h.trim().replace(/^"|"$/g,'').toLowerCase());
+
+  // Mapear headers para chaves do app
+  const keyMap = headers.map(h => SHEETS_MAP[h] || null);
+  const identified = keyMap.filter(Boolean).length;
+
+  const rows = lines.slice(1).map(line=>{
+    const vals = line.split(sep).map(v=>v.trim().replace(/^"|"$/g,''));
+    const obj = {id: uid(), history:[{ts:Date.now(),auto:true,text:'Importado do Sheets'}]};
+    keyMap.forEach((key, i)=>{
+      if(!key) return;
+      let val = vals[i] || '';
+      // Converter valores numéricos
+      if(['valorLeilao','valorProposta','comissao','desagio'].includes(key)){
+        val = parseVal(val) || 0;
+      }
+      // Converter datas do formato dd/mm/yyyy para yyyy-mm-dd
+      if(['dataEnvio','dataChegada','dataLimite'].includes(key) && val){
+        const m = val.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+        if(m) val = `${m[3].length===2?'20'+m[3]:m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+      }
+      obj[key] = val;
+    });
+    // Calcular pct e comissão se não vieram
+    if(!obj.pct) obj.pct = 5;
+    return obj;
+  }).filter(r => r.nomeInteressado || r.emailInteressado || r.nomeImovel);
+
+  return {rows, identified, total: headers.length};
+}
+
+function previewPaste(){
+  const raw = document.getElementById('paste-input').value.trim();
+  if(!raw){ toast('Cole os dados primeiro', true); return; }
+  const result = parsePaste(raw);
+  if(!result || !result.rows.length){
+    toast('Não consegui identificar os dados. Verifique se copiou com o cabeçalho.', true);
+    return;
+  }
+  const {rows, identified, total} = result;
+  const prev = document.getElementById('paste-preview');
+  prev.style.display = 'block';
+  prev.innerHTML = `
+    <div style="display:flex;gap:16px;margin-bottom:8px">
+      <div><span style="color:var(--accent);font-weight:700;font-size:16px">${rows.length}</span>
+        <span style="color:var(--muted);font-size:11px"> propostas encontradas</span></div>
+      <div><span style="color:var(--green);font-weight:700;font-size:16px">${identified}</span>
+        <span style="color:var(--muted);font-size:11px"> de ${total} colunas mapeadas</span></div>
+    </div>
+    <div style="color:var(--muted);font-size:11px;margin-bottom:6px">Primeiras 3 linhas:</div>
+    ${rows.slice(0,3).map(r=>`
+      <div style="font-size:11px;padding:4px 0;border-bottom:1px solid var(--border);color:var(--text)">
+        <strong>${r.nomeInteressado||'—'}</strong> · ${r.credor||'—'} · ${r.nomeImovel||'—'} ·
+        <span style="color:var(--accent)">${r.valorProposta?'R$ '+Number(r.valorProposta).toLocaleString('pt-BR'):''}</span>
+      </div>`).join('')}
+    ${rows.length>3?`<div style="font-size:11px;color:var(--muted);margin-top:4px">... e mais ${rows.length-3} propostas</div>`:''}`;
+  toast(`${rows.length} propostas prontas para importar!`);
+}
+
+function importPaste(){
+  const raw = document.getElementById('paste-input').value.trim();
+  if(!raw){ toast('Cole os dados primeiro', true); return; }
+  const result = parsePaste(raw);
+  if(!result || !result.rows.length){
+    toast('Não consegui identificar os dados.', true);
+    return;
+  }
+  const {rows} = result;
+  // Upsert — não duplicar se já existir pelo e-mail+imóvel
+  let adicionadas = 0, ignoradas = 0;
+  rows.forEach(r=>{
+    const jaExiste = propostas.find(p=>
+      p.emailInteressado && r.emailInteressado &&
+      p.emailInteressado.toLowerCase()===r.emailInteressado.toLowerCase() &&
+      p.nomeImovel && r.nomeImovel &&
+      p.nomeImovel.toLowerCase()===r.nomeImovel.toLowerCase()
+    );
+    if(jaExiste){ ignoradas++; return; }
+    propostas.push(r);
+    if(r.nomeInteressado||r.emailInteressado)
+      upsertContato(r.nomeInteressado||'', r.emailInteressado||'');
+    adicionadas++;
+  });
+  saveData();
+  closeModal('modal-paste');
+  renderTable();
+    toast(adicionadas+' importadas'+(ignoradas?', '+ignoradas+' ignoradas (duplicatas)':''));
+}
+
+// ═══ CSV ═════════════════════════════════════════════════════════
+function exportXLSX(){
+  if(typeof XLSX === 'undefined'){
+    toast('Carregando biblioteca... tente novamente em 2s', true);
+    return;
+  }
+
+  const wb = XLSX.utils.book_new();
+
+  // Cores por status
+  const STATUS_CORES = {
+    'Recebido e-mail':   'BFD7FF',
+    'Atuação comercial': 'FFE0A0',
+    'Contra Proposta':   'A0F0F0',
+    'Positivo':          'A0F5C0',
+    'Negativo':          'E0E0E0',
+    'Enviado':           'A0F5C0',
+    'Vendido/Suspenso':  'D0C0FF',
+    'Valor abaixo - Não Enviar': 'D0D0D0',
+  };
+
+  const COLS = [
+    {k:'status',           h:'Status'},
+    {k:'credor',           h:'Credor'},
+    {k:'parceiro',         h:'Parceiro?'},
+    {k:'enviadoCredor',    h:'Enviado ao Credor'},
+    {k:'dataEnvio',        h:'Data de Envio'},
+    {k:'retornoInteressado',h:'Retorno ao Interessado'},
+    {k:'nomeInteressado',  h:'Interessado'},
+    {k:'emailInteressado', h:'E-mail'},
+    {k:'nomeImovel',       h:'Imóvel'},
+    {k:'linkImovel',       h:'Link'},
+    {k:'valorLeilao',      h:'Vl. Leilão'},
+    {k:'valorProposta',    h:'Vl. Proposta'},
+    {k:'desagio',          h:'Deságio %'},
+    {k:'formaPagto',       h:'Pagamento'},
+    {k:'pagtoObs',         h:'Condições'},
+    {k:'comissao',         h:'Comissão'},
+    {k:'dataChegada',      h:'Data Chegada'},
+    {k:'dataLimite',       h:'Limite Retorno'},
+    {k:'matricula',        h:'Matrícula'},
+  ];
+
+  // Processar cada aba
+  const abas = [
+    {nome:'Geral',     sk:'smart_v6_geral'},
+    {nome:'Itaú',      sk:'smart_v6_itau'},
+    {nome:'Bradesco',  sk:'smart_v6_brad'},
+    {nome:'Santander', sk:'smart_v6_sant'},
+  ];
+
+  let totalPropostas = 0;
+
+  abas.forEach(aba=>{
+    let dados = [];
+    try{ dados = JSON.parse(localStorage.getItem(aba.sk))||[]; }catch{}
+    if(!dados.length) return;
+    totalPropostas += dados.length;
+
+    const wsData = [COLS.map(c=>c.h)]; // header
+    dados.forEach(p=>{
+      wsData.push(COLS.map(col=>{
+        const v = p[col.k];
+        if(col.k==='valorLeilao'||col.k==='valorProposta'||col.k==='comissao')
+          return Number(v)||0;
+        if(col.k==='desagio') return v?Number(Number(v).toFixed(2)):0;
+        return v||'';
+      }));
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+    // Larguras das colunas
+    ws['!cols'] = [
+      {wch:18},{wch:14},{wch:9},{wch:22},{wch:12},{wch:32},
+      {wch:22},{wch:28},{wch:30},{wch:40},{wch:14},{wch:14},
+      {wch:10},{wch:12},{wch:30},{wch:14},{wch:12},{wch:14},{wch:24}
+    ];
+
+    XLSX.utils.book_append_sheet(wb, ws, aba.nome);
+  });
+
+  // Aba de resumo
+  const resumo = [
+    ['Smart — Gestão de Propostas', ''],
+    ['Exportado em', new Date().toLocaleDateString('pt-BR')],
+    ['',''],
+    ['Aba','Propostas'],
+  ];
+  abas.forEach(a=>{
+    let d=[];try{d=JSON.parse(localStorage.getItem(a.sk))||[];}catch{}
+    if(d.length) resumo.push([a.nome, d.length]);
+  });
+  resumo.push(['','']);
+  resumo.push(['Total', totalPropostas]);
+
+  const wsRes = XLSX.utils.aoa_to_sheet(resumo);
+  wsRes['!cols']=[{wch:20},{wch:12}];
+  XLSX.utils.book_append_sheet(wb, wsRes, 'Resumo');
+
+  const nome = 'propostas_smart_'+new Date().toISOString().slice(0,10)+'.xlsx';
+  XLSX.writeFile(wb, nome);
+  toast('Excel exportado!');
+}
+
+function exportCSV(){
+  const cols=['status','credor','parceiro','enviadoCredor','dataEnvio','retornoInteressado','nomeInteressado','emailInteressado','nomeImovel','linkImovel','valorLeilao','valorProposta','desagio','formaPagto','pagtoObs','pct','comissao','dataChegada','dataLimite','matricula'];
+  const csv=[[...cols].join(';'),...propostas.map(p=>cols.map(c=>`"${(p[c]??'').toString().replace(/"/g,'""')}"`).join(';'))].join('\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'}));
+  a.download=`propostas_${abaAtual}_${new Date().toISOString().slice(0,10)}.csv`;a.click();toast('CSV exportado!');
+}
+function importCSV(){document.getElementById('csv-input').click();}
+function handleImport(e){
+  const file=e.target.files[0];if(!file)return;
+  const r=new FileReader();
+  r.onload=ev=>{
+    const raw=ev.target.result;
+    const lines=raw.split('\n').filter(l=>l.trim());
+    if(!lines.length){toast('Arquivo vazio',true);return;}
+
+    // Detectar separador: vírgula ou ponto e vírgula
+    const sep = lines[0].includes('\t') ? '\t' : lines[0].split(';').length > lines[0].split(',').length ? ';' : ',';
+
+    // Parsear linha respeitando campos entre aspas
+    function parseLine(line){
+      const res=[];let cur='',inQ=false;
+      for(let i=0;i<line.length;i++){
+        if(line[i]==='"'){if(inQ&&line[i+1]==='"'){cur+='"';i++;}else inQ=!inQ;}
+        else if(line[i]===sep&&!inQ){res.push(cur.trim());cur='';}
+        else cur+=line[i];
+      }
+      res.push(cur.trim());
+      return res;
+    }
+
+    const rawHeaders = parseLine(lines[0]);
+    // Mapear headers usando o SHEETS_MAP
+    const keyMap = rawHeaders.map(h=>SHEETS_MAP[h.toLowerCase().trim()]||h);
+
+    let adicionadas=0, ignoradas=0;
+    const novas = lines.slice(1).map(line=>{
+      const vals = parseLine(line);
+      const o = {id:uid(), history:[{ts:Date.now(),auto:true,text:'Importado via CSV'}]};
+      keyMap.forEach((key,i)=>{
+        let val = (vals[i]||'').trim();
+        // Converter valores numéricos
+        if(['valorLeilao','valorProposta','comissao','desagio'].includes(key)){
+          val = parseVal(val)||0;
+        }
+        // Converter datas dd/mm/yyyy → yyyy-mm-dd
+        if(['dataEnvio','dataChegada','dataLimite'].includes(key)&&val){
+          const m=val.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+          if(m)val=(m[3].length===2?'20'+m[3]:m[3])+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0');
+        }
+        o[key]=val;
+      });
+      if(!o.pct)o.pct=5;
+      return o;
+    }).filter(r=>r.nomeInteressado||r.emailInteressado||r.nomeImovel);
+
+    // Não duplicar (mesmo email + mesmo imóvel)
+    novas.forEach(r=>{
+      const jaExiste=propostas.find(p=>
+        p.emailInteressado&&r.emailInteressado&&
+        p.emailInteressado.toLowerCase()===r.emailInteressado.toLowerCase()&&
+        p.nomeImovel&&r.nomeImovel&&
+        p.nomeImovel.toLowerCase()===r.nomeImovel.toLowerCase()
+      );
+      if(jaExiste){ignoradas++;return;}
+      propostas.push(r);
+      if(r.nomeInteressado||r.emailInteressado)
+        upsertContato(r.nomeInteressado||'',r.emailInteressado||'');
+      adicionadas++;
+    });
+
+    saveData();renderTable();
+    toast(adicionadas+' importadas'+(ignoradas?', '+ignoradas+' ignoradas (duplicatas)':''));
+  };
+  r.readAsText(file,'UTF-8');e.target.value='';
+}
+
+// ═══ MODAL GENÉRICO ══════════════════════════════════════════════
+function closeModal(id){document.getElementById(id).classList.remove('open');}
+document.addEventListener('click',e=>{if(e.target.classList.contains('overlay'))e.target.classList.remove('open');});
+function toast(msg,err=false){
+  const el=document.getElementById('toast');el.textContent=msg;
+  el.className='toast'+(err?' err':'');void el.offsetWidth;el.classList.add('show');
+  setTimeout(()=>el.classList.remove('show'),2800);
+}
+
+
+// ═══ FILTER DROPDOWNS (estilo Sheets) ═══════════════════════════
+const filterState = {}; // {colKey: Set de valores selecionados} ou null = todos
+let openDropdown = null;
+
+function buildFilterDropdown(col, btnEl){
+  // Fechar qualquer aberto
+  if(openDropdown){ openDropdown.remove(); openDropdown=null; }
+
+  const allVals = col.opts || [];
+  const selected = filterState[col.key] || null; // null = todos selecionados
+
+  const dd = document.createElement('div');
+  dd.className = 'flt-dropdown open';
+  dd.id = 'flt-dd-'+col.key;
+
+  dd.innerHTML = `
+    <div class="flt-search"><input type="text" placeholder="🔍 Buscar..." oninput="filterDDSearch(this,'${col.key}')"></div>
+    <div class="flt-actions">
+      <button class="flt-action" onclick="filterDDAll('${col.key}',true)">Selecionar todos</button>
+      <button class="flt-action" onclick="filterDDAll('${col.key}',false)">Limpar</button>
+    </div>
+    <div class="flt-list" id="flt-list-${col.key}">
+      ${allVals.map(v=>{
+        const chk = !selected || selected.has(v) ? 'checked' : '';
+        return `<div class="flt-item">
+          <input type="checkbox" id="flt-cb-${col.key}-${v.replace(/\s+/g,'_')}" value="${v}" ${chk}
+            onchange="filterDDChange('${col.key}')">
+          <label for="flt-cb-${col.key}-${v.replace(/\s+/g,'_')}">${v}</label>
+        </div>`;
+      }).join('')}
+    </div>`;
+
+  // Posicionar relativo ao botão
+  document.body.appendChild(dd);
+  const rect = btnEl.getBoundingClientRect();
+  dd.style.top = (rect.bottom+2)+'px';
+  dd.style.left = rect.left+'px';
+
+  openDropdown = dd;
+
+  // Fechar ao clicar fora
+  setTimeout(()=>{
+    document.addEventListener('click', function closeFlt(e){
+      if(!dd.contains(e.target)&&e.target!==btnEl){
+        dd.remove();openDropdown=null;
+        document.removeEventListener('click',closeFlt);
+      }
+    });
+  },0);
+}
+
+function filterDDSearch(inp, key){
+  const q = inp.value.toLowerCase();
+  document.querySelectorAll(`#flt-list-${key} .flt-item`).forEach(item=>{
+    const lbl = item.querySelector('label').textContent.toLowerCase();
+    item.style.display = lbl.includes(q)?'':'none';
+  });
+}
+
+function filterDDAll(key, all){
+  document.querySelectorAll(`#flt-list-${key} input[type=checkbox]`).forEach(cb=>{
+    cb.checked = all;
+  });
+  filterDDChange(key);
+}
+
+function filterDDChange(key){
+  const cbs = [...document.querySelectorAll(`#flt-list-${key} input[type=checkbox]`)];
+  const allChecked = cbs.every(cb=>cb.checked);
+  if(allChecked){
+    delete filterState[key];
+  } else {
+    filterState[key] = new Set(cbs.filter(cb=>cb.checked).map(cb=>cb.value));
+  }
+  updateFilterBtnLabel(key);
+  renderTable();
+}
+
+function updateFilterBtnLabel(key){
+  const btn = document.getElementById('flt-btn-'+key);
+  if(!btn)return;
+  const sel = filterState[key];
+  if(!sel){btn.querySelector('.flt-btn-text').textContent='▼ Todos';btn.classList.remove('open');return;}
+  const n = sel.size;
+  const col = COLS.find(c=>c.key===key);
+  const total = col?.opts?.length||0;
+  btn.querySelector('.flt-btn-text').textContent = n===0?'(Nenhum)':n===total?'▼ Todos':`▼ ${n} selecionados`;
+  btn.classList.toggle('open', n>0&&n<total);
+}
+
+// ═══ MOVER PROPOSTA ENTRE ABAS ═══════════════════════════════════
+function toggleMoverMenu(){
+  const menu = document.getElementById('sp-mover-menu');
+  if(menu.style.display==='block'){menu.style.display='none';return;}
+  // Popular com as outras abas
+  const opcoes = Object.entries(ABAS)
+    .filter(([key])=>key!==abaAtual)
+    .map(([key,cfg])=>`
+      <div onclick="moverProposta('${key}')" style="
+        padding:9px 14px;cursor:pointer;font-size:12px;font-weight:600;
+        display:flex;align-items:center;gap:8px;transition:background .1s;
+        border-bottom:1px solid var(--border);"
+        onmouseover="this.style.background='var(--bg3)'"
+        onmouseout="this.style.background=''">
+        <span style="width:10px;height:10px;border-radius:50%;background:${cfg.cor};flex-shrink:0"></span>
+        ${cfg.label}
+      </div>`).join('');
+  menu.innerHTML = opcoes;
+  menu.style.display='block';
+  // Fechar ao clicar fora
+  setTimeout(()=>{
+    document.addEventListener('click',function closeMv(e){
+      if(!document.getElementById('sp-mover-wrap').contains(e.target)){
+        menu.style.display='none';
+        document.removeEventListener('click',closeMv);
+      }
+    });
+  },0);
+}
+
+function moverProposta(abaDestino){
+  if(!editId){toast('Salve a proposta antes de mover',true);return;}
+  const p = propostas.find(x=>x.id===editId);
+  if(!p){toast('Proposta não encontrada',true);return;}
+
+  // Remover da aba atual
+  propostas = propostas.filter(x=>x.id!==editId);
+  localStorage.setItem(ABAS[abaAtual].sk, JSON.stringify(propostas));
+
+  // Adicionar na aba destino
+  const destKey = ABAS[abaDestino].sk;
+  let destPropostas = [];
+  try{destPropostas=JSON.parse(localStorage.getItem(destKey))||[];}catch{}
+  // Registrar no histórico
+  p.history = p.history||[];
+  p.history.push({ts:Date.now(),auto:true,text:`Movido de ${ABAS[abaAtual].label} para ${ABAS[abaDestino].label}`});
+  destPropostas.push(p);
+  localStorage.setItem(destKey, JSON.stringify(destPropostas));
+
+  // Fechar painel e atualizar tabela
+  closePanel();
+  renderTable();
+  document.getElementById('sp-mover-menu').style.display='none';
+  toast(`Proposta movida para ${ABAS[abaDestino].label}!`);
+}
+
+// ═══ SELECT COLORIDO ════════════════════════════════════════════
+// Mapa de cor por valor (compartilhado entre todos os selects coloridos)
+const COR_MAP = {
+  // STATUS
+  'Recebido e-mail':    {cls:'c-texto',    dot:'#6272a4'},
+  'Atuação comercial':  {cls:'c-laranja',  dot:'#f5a623'},
+  'Contra Proposta':    {cls:'c-roxo',     dot:'#7c3aed'},
+  'Positivo':           {cls:'c-verde-forte', dot:'#3ecf8e'},
+  'Negativo':           {cls:'c-muted',    dot:'#7a85a8'},
+  'Enviado':            {cls:'c-verde',    dot:'#3ecf8e'},
+  'Vendido/Suspenso':   {cls:'c-roxo',     dot:'#a78bfa'},
+  'Valor abaixo - Não Enviar': {cls:'c-cinza', dot:'#9ca3af'},
+  // ENVIADO AO CREDOR
+  'SIM':                             {cls:'c-verde-forte', dot:'#3ecf8e'},
+  'A ser enviado':                   {cls:'c-amarelo',     dot:'#fbbf24'},
+  'Valor abaixo - Não Enviar':       {cls:'c-vab-red',     dot:'#dc2626'},
+  'Feirão INTER - NÃO ENVIAR':       {cls:'c-vermelho',    dot:'#ff6b6b'},
+  'Adicionado ao corpo do e-mail':   {cls:'c-laranja',     dot:'#f5a623'},
+  'A.F (não pode ser mandado)':      {cls:'c-vermelho',    dot:'#ff6b6b'},
+  'Vendido ou Leilão Suspenso':      {cls:'c-vermelho',    dot:'#dc2626'},
+  // RETORNO AO INTERESSADO
+  'Informar Forma de pagamento':     {cls:'c-laranja',     dot:'#f5a623'},
+  'Pedido de Comissão':              {cls:'c-laranja',     dot:'#f5a623'},
+  'Informar Link do Imóvel':         {cls:'c-laranja',     dot:'#f5a623'},
+  'Pedido de documentação':          {cls:'c-laranja',     dot:'#f5a623'},
+  'Recebimento Enviado ao interessado': {cls:'c-texto',    dot:'#6272a4'},
+  'Contra Proposta - Aguardando retorno do interessado': {cls:'c-roxo-claro',  dot:'#7c3aed'},
+  'Negativa enviada ao interessado': {cls:'c-vermelho',    dot:'#ff6b6b'},
+  'Interessado desejou não prosseguir': {cls:'c-vermelho', dot:'#ff6b6b'},
+  'Analisará Pós Leilão':            {cls:'c-vermelho',    dot:'#dc2626'},
+  'Situação Atípica':                {cls:'c-amarelo',     dot:'#fbbf24'},
+  'Fluxo com Jurídico':              {cls:'c-verde',       dot:'#3ecf8e'},
+  'Enviado ao credor (promessa de compra)': {cls:'c-verde-forte', dot:'#3ecf8e'},
+};
+
+let openCSDropdown = null;
+
+function buildCS(wrapperId, opts, currentVal, onChange, small=false){
+  const wrap = document.getElementById(wrapperId);
+  if(!wrap) return;
+  wrap.innerHTML = '';
+  wrap.className = 'cs-wrap';
+
+  // Display (botão que mostra valor atual)
+  const disp = document.createElement('div');
+  disp.className = 'cs-display'+(small?' sm':'');
+  disp.onclick = (e)=>{ e.stopPropagation(); openCSMenu(wrapperId, opts, currentVal, onChange, small); };
+  updateCSDisplay(disp, currentVal);
+  wrap.appendChild(disp);
+}
+
+function updateCSDisplay(disp, val){
+  const info = COR_MAP[val] || {cls:'c-cinza', dot:'#9ca3af'};
+  if(!val){
+    disp.innerHTML = `<span style="color:var(--muted);font-size:11px">— selecionar</span><span class="cs-arrow">▾</span>`;
+    return;
+  }
+  disp.innerHTML = `
+    <span class="badge ${info.cls}" style="font-size:11px;padding:2px 9px;flex-shrink:0">${val}</span>
+    <span class="cs-arrow">▾</span>`;
+}
+
+function openCSMenu(wrapperId, opts, currentVal, onChange, small){
+  // Fechar qualquer dropdown aberto
+  if(openCSDropdown){ openCSDropdown.remove(); openCSDropdown=null; }
+
+  const wrap = document.getElementById(wrapperId);
+  if(!wrap) return;
+  const disp = wrap.querySelector('.cs-display');
+
+  const dd = document.createElement('div');
+  dd.className = 'cs-dropdown open';
+
+  // Opção vazia
+  const emptyOpt = document.createElement('div');
+  emptyOpt.className = 'cs-option'+(small?' sm':'');
+  emptyOpt.innerHTML = `<span class="cs-dot" style="background:var(--muted2)"></span><span class="cs-label" style="color:var(--muted)">— selecionar</span>`;
+  emptyOpt.onclick = ()=>{ onChange(''); updateCSDisplay(disp,''); dd.remove(); openCSDropdown=null; };
+  dd.appendChild(emptyOpt);
+
+  opts.forEach(opt=>{
+    const info = COR_MAP[opt] || {cls:'c-cinza', dot:'#9ca3af'};
+    const el = document.createElement('div');
+    el.className = 'cs-option'+(small?' sm':'')+(opt===currentVal?' selected':'');
+    el.innerHTML = `
+      <span class="cs-dot" style="background:${info.dot}"></span>
+      <span class="badge ${info.cls}" style="font-size:11px;padding:1px 8px">${opt}</span>
+      ${opt===currentVal?'<span class="cs-check">✓</span>':''}`;
+    el.onclick = ()=>{ onChange(opt); updateCSDisplay(disp,opt); dd.remove(); openCSDropdown=null; };
+    dd.appendChild(el);
+  });
+
+  document.body.appendChild(dd);
+  openCSDropdown = dd;
+
+  // Posicionar
+  const rect = disp.getBoundingClientRect();
+  dd.style.top  = (rect.bottom+3)+'px';
+  dd.style.left = rect.left+'px';
+  // Ajustar se sair da tela
+  requestAnimationFrame(()=>{
+    const ddR = dd.getBoundingClientRect();
+    if(ddR.right > window.innerWidth) dd.style.left = (window.innerWidth - ddR.width - 8)+'px';
+    if(ddR.bottom > window.innerHeight) dd.style.top = (rect.top - ddR.height - 3)+'px';
+  });
+
+  setTimeout(()=>{
+    document.addEventListener('click', function closeCS(e){
+      if(!dd.contains(e.target)){dd.remove();openCSDropdown=null;document.removeEventListener('click',closeCS);}
+    });
+  },0);
+}
+
+// ═══ IMPORTAR DO CHAT ════════════════════════════════════════════
+let previewData = {};
+
+function openJSONModal(){
+  document.getElementById('json-input').value='';
+  document.getElementById('json-step1').style.display='block';
+  document.getElementById('json-step2').style.display='none';
+  document.getElementById('json-import-btn').style.display='none';
+  previewData={};
+  document.getElementById('modal-json').classList.add('open');
+}
+
+function voltarStep1(){
+  document.getElementById('json-step1').style.display='block';
+  document.getElementById('json-step2').style.display='none';
+  document.getElementById('json-import-btn').style.display='none';
+}
+
+function carregarPreview(){
+  const raw = document.getElementById('json-input').value.trim();
+  if(!raw){ toast('Cole o JSON primeiro',true); return; }
+  try{
+    const match = raw.match(/\{[\s\S]*\}/);
+    if(!match) throw new Error('não encontrado');
+    previewData = JSON.parse(match[0]);
+  }catch(e){
+    toast('JSON inválido — verifique o formato',true); return;
+  }
+  const p = previewData;
+  // Preencher formulário editável
+  const set = (id,v) => { const el=document.getElementById(id); if(el&&v!==undefined&&v!==null) el.value=v; };
+  set('jf-nome',      p.nomeInteressado);
+  set('jf-email',     p.emailInteressado);
+  set('jf-nomeImovel',p.nomeImovel);
+  set('jf-link',      p.linkImovel);
+  set('jf-credor',    p.credor);
+  set('jf-vlLeilao',  p.valorLeilao);
+  set('jf-vlProp',    p.valorProposta);
+  set('jf-pagtoObs',  p.pagtoObs);
+  set('jf-pct',       p.pct||5);
+  set('jf-chegada',   p.dataChegada || new Date().toISOString().slice(0,10));
+  set('jf-limite',    p.dataLimite);
+  set('jf-matricula', p.matricula);
+  set('jf-obs',       p.obs);
+  // Status
+  const stEl = document.getElementById('jf-status');
+  if(stEl && p.status){
+    [...stEl.options].forEach(o=>{ if(o.value===p.status) stEl.value=p.status; });
+  }
+  // Pagamento
+  const pgEl = document.getElementById('jf-pagto');
+  if(pgEl && p.formaPagto){
+    [...pgEl.options].forEach(o=>{ if(o.value===p.formaPagto) pgEl.value=p.formaPagto; });
+  }
+  toggleJfPagtoObs();
+  calcPreviewDes();
+  calcJfLimite();
+  // Mostrar step 2
+  document.getElementById('json-step1').style.display='none';
+  document.getElementById('json-step2').style.display='block';
+  document.getElementById('json-import-btn').style.display='';
+}
+
+function calcPreviewDes(){
+  const vl  = parseVal(document.getElementById('jf-vlLeilao').value);
+  const vp  = parseVal(document.getElementById('jf-vlProp').value);
+  const pct = parseFloat(document.getElementById('jf-pct').value)||5;
+  if(vl>0&&vp>0){
+    document.getElementById('jf-desagio').value = ((vl-vp)/vl*100).toFixed(2)+'%';
+    document.getElementById('jf-comissao').value = 'R$ '+(vp*pct/100).toLocaleString('pt-BR',{minimumFractionDigits:2});
+  }
+}
+
+function calcJfLimite(){
+  const d = document.getElementById('jf-chegada').value;
+  if(!d) return;
+  const el = document.getElementById('jf-limite');
+  if(!el.value){ // só preenche se estiver vazio
+    const dt = new Date(d+'T00:00:00');
+    dt.setDate(dt.getDate()+7);
+    el.value = dt.toISOString().slice(0,10);
+  }
+}
+
+function toggleJfPagtoObs(){
+  const v = document.getElementById('jf-pagto').value;
+  document.getElementById('jf-pagto-obs-wrap').style.display = (v==='Financiado'||v==='Parcelado') ? '' : 'none';
+}
+
+function abrirLinkPreview(){
+  const link = document.getElementById('jf-link').value.trim();
+  if(link) window.open(link,'_blank');
+  else toast('Sem link para abrir',true);
+}
+
+function importFromChat(){
+  const get = id => (document.getElementById(id)?.value||'').trim();
+  const nome = get('jf-nome');
+  if(!nome){ toast('Informe o nome do interessado',true); return; }
+
+  const vl  = parseVal(get('jf-vlLeilao'));
+  const vp  = parseVal(get('jf-vlProp'));
+  const pct = parseFloat(get('jf-pct'))||5;
+  const des = vl>0&&vp>0 ? (vl-vp)/vl*100 : 0;
+
+  const p = {
+    id: uid(),
+    status:              get('jf-status') || 'Recebido e-mail',
+    credor:              get('jf-credor'),
+    parceiro:            'Sim',
+    enviadoCredor:       'A ser enviado',
+    dataEnvio:           '',
+    retornoInteressado:  '',
+    nomeInteressado:     nome,
+    emailInteressado:    get('jf-email'),
+    nomeImovel:          get('jf-nomeImovel'),
+    linkImovel:          get('jf-link'),
+    valorLeilao:         vl,
+    valorProposta:       vp,
+    desagio:             des,
+    formaPagto:          get('jf-pagto') || 'À vista',
+    pagtoObs:            get('jf-pagtoObs'),
+    pct:                 pct,
+    comissao:            vp*pct/100,
+    dataChegada:         get('jf-chegada'),
+    dataLimite:          get('jf-limite'),
+    matricula:           get('jf-matricula'),
+    obs:                 get('jf-obs'),
+    history:             [{ts:Date.now(), auto:true, text:'Importado via Chat'}]
+  };
+
+  // Data limite automática se não preenchida
+  if(p.dataChegada && !p.dataLimite){
+    const dt = new Date(p.dataChegada+'T00:00:00');
+    dt.setDate(dt.getDate()+7);
+    p.dataLimite = dt.toISOString().slice(0,10);
+  }
+
+  if(p.nomeInteressado||p.emailInteressado)
+    upsertContato(p.nomeInteressado, p.emailInteressado);
+
+  propostas.push(p);
+  saveData();
+  closeModal('modal-json');
+  renderTable();
+  toast('Proposta importada com sucesso!');
+}
+
+function previewJSON(){ /* mantido para compatibilidade */ }
+
+// ═══ RESET TOTAL ═════════════════════════════════════════════════// ═══ RESET TOTAL ═════════════════════════════════════════════════
+function resetTudo(){
+  const nomeAba = ABAS[abaAtual].label;
+  if(!confirm('⚠️ Isso vai apagar TODAS as propostas da aba '+nomeAba+'. As outras abas não serão afetadas. Tem certeza?')) return;
+  if(!confirm('Última confirmação — apagar tudo da aba '+nomeAba+'?')) return;
+  localStorage.removeItem(ABAS[abaAtual].sk);
+  propostas = [];
+  renderTable();
+  toast('Aba '+nomeAba+' limpa.');
+}
+
+// ═══ INIT ════════════════════════════════════════════════════════
+loadData();buildThead();renderTable();
+// Garantir aba geral ativa no início
+document.getElementById('tab-geral').classList.add('active');
+</script>
+</body>
+</html>
