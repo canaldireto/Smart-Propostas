@@ -5,6 +5,57 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Smart — Gestão de Propostas</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPA_URL = 'https://vlmskwujxrynkagqogzr.supabase.co';
+const SUPA_KEY = 'sb_publishable_ZuApYz8mceHM285GuBFptQ_0QgbvhtF';
+const supa = supabase.createClient(SUPA_URL, SUPA_KEY);
+
+// Mapa aba → tabela
+const SUPA_TABLE = {
+  geral:     'propostas_geral',
+  itau:      'propostas_itau',
+  brad:      'propostas_bradesco',
+  sant:      'propostas_santander',
+};
+
+// ── CARREGAR do Supabase ──
+async function loadFromSupabase(aba) {
+  const table = SUPA_TABLE[aba];
+  if(!table) return null;
+  const { data, error } = await supa.from(table).select('dados').order('criado_em', {ascending:true});
+  if(error){ console.error('Supabase load error:', error); return null; }
+  return data.map(r => r.dados);
+}
+
+// ── SALVAR no Supabase ──
+async function saveToSupabase(aba, propostas) {
+  const table = SUPA_TABLE[aba];
+  if(!table) return;
+  // Upsert todas as propostas
+  const rows = propostas.map(p => ({ id: p.id, dados: p }));
+  const { error } = await supa.from(table).upsert(rows, {onConflict:'id'});
+  if(error) console.error('Supabase save error:', error);
+}
+
+// ── DELETAR do Supabase ──
+async function deleteFromSupabase(aba, id) {
+  const table = SUPA_TABLE[aba];
+  if(!table) return;
+  await supa.from(table).delete().eq('id', id);
+}
+
+// ── CONTATOS ──
+async function loadContatosSupabase() {
+  const { data, error } = await supa.from('contatos').select('dados');
+  if(error){ console.error(error); return null; }
+  return data.map(r => r.dados);
+}
+async function saveContatosSupabase(contatos) {
+  const rows = contatos.map(c => ({ id: c.id, dados: c }));
+  await supa.from('contatos').upsert(rows, {onConflict:'id'});
+}
+</script>
 <style>
 :root,[data-theme="dark"]{
   --bg:#0f1117;--bg2:#161b27;--bg3:#1e2438;--card:#1a2035;
@@ -1039,11 +1090,28 @@ function loadData(){
   const aba = ABAS[abaAtual];
   try{propostas=JSON.parse(localStorage.getItem(aba.sk))||[];}catch{propostas=[];}
   try{contatos=JSON.parse(localStorage.getItem(SK_C))||[];}catch{contatos=[];}
+  // Carregar do Supabase em background
+  loadFromSupabase(abaAtual).then(data=>{
+    if(data && data.length > 0){
+      propostas=data;
+      localStorage.setItem(aba.sk, JSON.stringify(propostas));
+      renderTable();
+    }
+  });
+  loadContatosSupabase().then(data=>{
+    if(data && data.length > 0){
+      contatos=data;
+      localStorage.setItem(SK_C, JSON.stringify(contatos));
+    }
+  });
 }
 function saveData(){
   const aba = ABAS[abaAtual];
   localStorage.setItem(aba.sk,JSON.stringify(propostas));
   localStorage.setItem(SK_C,JSON.stringify(contatos));
+  // Salvar no Supabase
+  saveToSupabase(abaAtual, propostas);
+  saveContatosSupabase(contatos);
 }
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
 
