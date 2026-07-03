@@ -29,9 +29,10 @@ async function supaRequest(method, table, body, params='') {
       method, headers: SUPA_HEADERS,
       body: body ? JSON.stringify(body) : undefined
     });
-    if(!res.ok){ const e=await res.text(); console.error('Supa error:',e); return null; }
-    if(res.status===204) return [];
-    return await res.json();
+    if(!res.ok){ const e=await res.text(); console.error('Supa error:',method,table,e); return null; }
+    if(res.status===204 || res.headers.get('content-length')==='0') return [];
+    const text = await res.text();
+    return text ? JSON.parse(text) : [];
   } catch(e) { console.error('Supa fetch error:', e); return null; }
 }
 
@@ -60,7 +61,14 @@ async function saveToSupabase(aba, propostas) {
 async function deleteFromSupabase(aba, id) {
   const table = SUPA_TABLE[aba];
   if(!table) return;
-  await supaRequest('DELETE', table, null, `?id=eq.${id}`);
+  try {
+    const res = await fetch(`${SUPA_URL}/rest/v1/${table}?id=eq.${id}`, {
+      method: 'DELETE',
+      headers: SUPA_HEADERS
+    });
+    if(res.ok) console.log('Delete OK:', id);
+    else console.error('Delete error:', await res.text());
+  } catch(e) { console.error('Delete fetch error:', e); }
 }
 
 async function loadContatosSupabase() {
