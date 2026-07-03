@@ -89,6 +89,48 @@ async function saveContatosSupabase(contatos) {
 }
 
 console.log('Supabase configurado:', SUPA_URL);
+
+// ── IMPORTAR JSON EM MASSA (global) ──
+window.handleJSONMassImport = function(e){
+  const file = e.target.files[0]; if(!file) return;
+  const r = new FileReader();
+  r.onload = ev => {
+    try{
+      const dados = JSON.parse(ev.target.result);
+      if(!Array.isArray(dados)){ 
+        if(window.toast) window.toast('Formato inválido',true); 
+        return; 
+      }
+      const isContatos = dados.length > 0 && dados[0].email && !dados[0].status;
+      if(isContatos){
+        let adicionados=0;
+        dados.forEach(ct=>{
+          if(!ct.id) ct.id = (Date.now().toString(16)+Math.random().toString(16).slice(2));
+          if(window.contatos) window.contatos.push(ct);
+          adicionados++;
+        });
+        if(window.localStorage) localStorage.setItem('smart_v6_c', JSON.stringify(window.contatos||[]));
+        saveContatosSupabase(window.contatos||[]);
+        if(window.toast) window.toast(adicionados+' contatos importados!');
+      } else {
+        let adicionadas=0;
+        dados.forEach(p=>{
+          if(!p.id) p.id = (Date.now().toString(16)+Math.random().toString(16).slice(2));
+          if(window.propostas) window.propostas.push(p);
+          adicionadas++;
+        });
+        if(window.saveData) window.saveData();
+        if(window.renderTable) window.renderTable();
+        if(window.toast) window.toast(adicionadas+' propostas importadas!');
+      }
+    } catch(err){
+      if(window.toast) window.toast('Erro: '+err.message, true);
+      console.error(err);
+    }
+  };
+  r.readAsText(file,'UTF-8');
+  e.target.value='';
+};
 </script>
 <style>
 :root,[data-theme="dark"]{
