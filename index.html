@@ -46,16 +46,15 @@ async function saveToSupabase(aba, propostas) {
   const table = SUPA_TABLE[aba];
   if(!table || !propostas.length) return;
   const rows = propostas.map(p => ({ id: p.id, dados: p }));
-  await supaRequest('POST', table, rows, 
-    '?on_conflict=id',  
-  );
-  // Usar UPSERT via header
-  const res = await fetch(`${SUPA_URL}/rest/v1/${table}?on_conflict=id`, {
-    method: 'POST',
-    headers: { ...SUPA_HEADERS, 'Prefer': 'resolution=merge-duplicates,return=minimal' },
-    body: JSON.stringify(rows)
-  });
-  if(!res.ok) console.error('Save error:', await res.text());
+  try {
+    const res = await fetch(`${SUPA_URL}/rest/v1/${table}?on_conflict=id`, {
+      method: 'POST',
+      headers: { ...SUPA_HEADERS, 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify(rows)
+    });
+    if(!res.ok) console.error('Save error:', await res.text());
+    else console.log('Supabase save OK:', aba, propostas.length, 'propostas');
+  } catch(e) { console.error('Save fetch error:', e); }
 }
 
 async function deleteFromSupabase(aba, id) {
@@ -72,11 +71,13 @@ async function loadContatosSupabase() {
 async function saveContatosSupabase(contatos) {
   if(!contatos.length) return;
   const rows = contatos.map(c => ({ id: c.id, dados: c }));
-  await fetch(`${SUPA_URL}/rest/v1/contatos?on_conflict=id`, {
-    method: 'POST',
-    headers: { ...SUPA_HEADERS, 'Prefer': 'resolution=merge-duplicates,return=minimal' },
-    body: JSON.stringify(rows)
-  });
+  try {
+    await fetch(`${SUPA_URL}/rest/v1/contatos?on_conflict=id`, {
+      method: 'POST',
+      headers: { ...SUPA_HEADERS, 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify(rows)
+    });
+  } catch(e) { console.error('Contatos save error:', e); }
 }
 
 console.log('Supabase configurado:', SUPA_URL);
@@ -1752,6 +1753,7 @@ function saveProposta(){
 function deleteFromPanel(){
   if(!editId) return;
   if(!confirm('Excluir esta proposta?')) return;
+  deleteFromSupabase(abaAtual, editId);
   propostas = propostas.filter(p=>p.id!==editId);
   saveData(); closePanel(); renderTable();
   toast('Proposta excluída.');
@@ -1759,6 +1761,7 @@ function deleteFromPanel(){
 
 function deleteProposta(id){
   if(!confirm('Excluir esta proposta?'))return;
+  deleteFromSupabase(abaAtual, id);
   propostas=propostas.filter(p=>p.id!==id);saveData();renderTable();toast('Removida.');
 }
 
@@ -2836,6 +2839,7 @@ function moverProposta(abaDestino){
   if(!p){toast('Proposta não encontrada',true);return;}
 
   // Remover da aba atual
+  deleteFromSupabase(abaAtual, editId);
   propostas = propostas.filter(x=>x.id!==editId);
   localStorage.setItem(ABAS[abaAtual].sk, JSON.stringify(propostas));
 
