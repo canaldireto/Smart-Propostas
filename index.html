@@ -17,10 +17,10 @@ const SUPA_HEADERS = {
 };
 
 const SUPA_TABLE = {
-  geral: 'propostas_geral',
-  itau:  'propostas_itau',
-  brad:  'propostas_bradesco',
-  sant:  'propostas_santander',
+  geral:     'propostas_geral',
+  itau:      'propostas_itau',
+  bradesco:  'propostas_bradesco',
+  santander: 'propostas_santander',
 };
 
 async function supaRequest(method, table, body, params='') {
@@ -60,15 +60,24 @@ async function saveToSupabase(aba, propostas) {
 
 async function deleteFromSupabase(aba, id) {
   const table = SUPA_TABLE[aba];
-  if(!table) return;
+  if(!table) { console.error('Tabela não encontrada para aba:', aba); return false; }
   try {
     const res = await fetch(`${SUPA_URL}/rest/v1/${table}?id=eq.${id}`, {
       method: 'DELETE',
       headers: SUPA_HEADERS
     });
-    if(res.ok) console.log('Delete OK:', id);
-    else console.error('Delete error:', await res.text());
-  } catch(e) { console.error('Delete fetch error:', e); }
+    if(res.ok) { console.log('Delete OK:', id); return true; }
+    else {
+      const e = await res.text();
+      console.error('Delete error:', e);
+      if(window.toast) window.toast('Erro ao excluir no Supabase — veja o console', true);
+      return false;
+    }
+  } catch(e) {
+    console.error('Delete fetch error:', e);
+    if(window.toast) window.toast('Erro de conexão ao excluir', true);
+    return false;
+  }
 }
 window.deleteFromSupabase = deleteFromSupabase;
 window.saveToSupabase = saveToSupabase;
