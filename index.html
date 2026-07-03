@@ -70,6 +70,11 @@ async function deleteFromSupabase(aba, id) {
     else console.error('Delete error:', await res.text());
   } catch(e) { console.error('Delete fetch error:', e); }
 }
+window.deleteFromSupabase = deleteFromSupabase;
+window.saveToSupabase = saveToSupabase;
+window.saveContatosSupabase = saveContatosSupabase;
+window.loadFromSupabase = loadFromSupabase;
+window.loadContatosSupabase = loadContatosSupabase;
 
 async function loadContatosSupabase() {
   const data = await supaRequest('GET', 'contatos', null, '?select=dados');
