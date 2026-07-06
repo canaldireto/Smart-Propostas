@@ -450,8 +450,18 @@ tbody td{
   font-size:11px;font-weight:700;flex-shrink:0;color:#fff}
 .act-bubble{background:var(--bg3);border:1px solid var(--border);
   border-radius:8px;padding:8px 12px;flex:1}
-.act-bubble p{font-size:13px;line-height:1.5;word-break:break-word}
-.act-bubble .act-ts{margin-top:4px;display:block}
+.act-bubble p{font-size:13px;line-height:1.5;word-break:break-word;white-space:pre-wrap}
+.act-bubble .act-ts{margin-top:4px;display:flex;align-items:center;gap:8px}
+.act-edit-btn{background:none;border:none;color:var(--muted2);font-size:10px;
+  cursor:pointer;padding:0;opacity:.7}
+.act-edit-btn:hover{opacity:1;color:var(--accent)}
+.act-bubble textarea{width:100%;background:var(--bg2);border:1px solid var(--accent);
+  border-radius:6px;color:inherit;font-family:var(--font);font-size:13px;
+  padding:6px 8px;resize:vertical;min-height:50px;box-sizing:border-box}
+.act-edit-actions{display:flex;gap:6px;margin-top:6px;justify-content:flex-end}
+.act-edit-actions button{font-size:11px;padding:3px 10px;border-radius:6px;
+  border:1px solid var(--border);background:var(--bg2);color:inherit;cursor:pointer}
+.act-edit-actions button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 
 /* Input comentário */
 .act-inp-row{display:flex;gap:8px;align-items:flex-start}
@@ -1609,6 +1619,7 @@ function openPanel(id){
   const p=propostas.find(x=>x.id===id);if(!p)return;
   editId=id;
   histEntries=p.history?[...p.history]:[{ts:Date.now(),auto:true,text:'Cadastrado'}];
+  histEditIdx=null;
   fillPanel(p);renderHist();
   document.getElementById('sp-title').textContent=[p.credor,p.nomeInteressado,p.nomeImovel].filter(Boolean).join(' · ')||'Proposta';
   document.getElementById('sp-email-btn').style.display='';
@@ -1619,6 +1630,7 @@ function openPanel(id){
 function openNewPanel(){
   editId=null;
   histEntries=[{ts:Date.now(),auto:true,text:'Proposta criada'}];
+  histEditIdx=null;
   clearPanel();
   document.getElementById('mp-chegada').value=new Date().toISOString().slice(0,10);
   autoLimite();renderHist();
@@ -1731,15 +1743,55 @@ function renderHist(){
   const log=document.getElementById('sp-hist-log');if(!log)return;
   if(!histEntries.length){log.innerHTML='<span style="color:var(--muted);font-size:12px">Nenhuma atividade.</span>';return;}
   // Ordem cronológica: mais antigo no topo, mais novo embaixo
-  log.innerHTML=[...histEntries].map(e=>{
+  log.innerHTML=[...histEntries].map((e,idx)=>{
     if(e.auto)return`<div class="act-auto">${e.text}<span class="act-ts">${fmtDT(e.ts)}</span></div>`;
+    if(histEditIdx===idx){
+      return`<div class="act-comment">
+        <div class="act-avatar">FR</div>
+        <div class="act-bubble">
+          <textarea id="act-edit-inp">${e.text.replace(/</g,'&lt;')}</textarea>
+          <div class="act-edit-actions">
+            <button onclick="cancelHistEdit()">Cancelar</button>
+            <button class="primary" onclick="saveHistEdit(${idx})">Salvar</button>
+          </div>
+        </div>
+      </div>`;
+    }
     return`<div class="act-comment">
       <div class="act-avatar">FR</div>
-      <div class="act-bubble"><p>${e.text}</p><span class="act-ts">${fmtDT(e.ts)}</span></div>
+      <div class="act-bubble"><p>${e.text}</p>
+        <span class="act-ts">${fmtDT(e.ts)}${e.editedTs?' · editado':''}
+          <button class="act-edit-btn" onclick="editHistComment(${idx})">✎ Editar</button>
+        </span>
+      </div>
     </div>`;
   }).join('');
-  // Scroll para o final (mais recente)
-  log.scrollTop = log.scrollHeight;
+  // Scroll para o final (mais recente), exceto quando editando
+  if(histEditIdx===null) log.scrollTop = log.scrollHeight;
+}
+let histEditIdx=null;
+function editHistComment(idx){
+  histEditIdx=idx;
+  renderHist();
+  const inp=document.getElementById('act-edit-inp');
+  if(inp){inp.focus();inp.setSelectionRange(inp.value.length,inp.value.length);}
+}
+function cancelHistEdit(){
+  histEditIdx=null;
+  renderHist();
+}
+function saveHistEdit(idx){
+  const inp=document.getElementById('act-edit-inp');
+  const txt=inp.value.trim();
+  if(!txt) return;
+  histEntries[idx].text=txt;
+  histEntries[idx].editedTs=Date.now();
+  histEditIdx=null;
+  renderHist();
+  if(editId){
+    const p=propostas.find(x=>x.id===editId);
+    if(p){p.history=[...histEntries];saveData();}
+  }
 }
 function addHist(){
   const inp=document.getElementById('sp-hist-inp');
