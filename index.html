@@ -285,6 +285,8 @@ tbody tr.row-pos td{background:rgba(22,163,74,.15)!important}
 tbody tr.row-pos:hover td{background:rgba(22,163,74,.25)!important}
 tbody tr.row-contra td{background:rgba(124,58,237,.1)!important}
 tbody tr.row-contra:hover td{background:rgba(124,58,237,.18)!important}
+tbody tr.row-atuacao td{background:rgba(249,115,22,.12)!important}
+tbody tr.row-atuacao:hover td{background:rgba(249,115,22,.2)!important}
 tbody td{
   padding:7px 10px;white-space:nowrap;overflow:hidden;
   text-overflow:ellipsis;vertical-align:middle;max-width:0;
@@ -1494,7 +1496,7 @@ function renderTable(){
     // 0-30% = verde normal, >30% = amarelo
     const desClass=des<=0?'des-neg':des<30?'des-v':'des-a';
     const dc=dateClass(p.dataLimite);
-    const rowCls=p.status==='Positivo'?'row-pos':p.status==='Contra Proposta'?'row-contra':'';
+    const rowCls=p.status==='Positivo'?'row-pos':p.status==='Contra Proposta'?'row-contra':p.status==='Atuação comercial'?'row-atuacao':'';
     const pagFull=p.formaPagto+(p.pagtoObs?` · ${p.pagtoObs}`:'');
     const imCell=p.nomeImovel
       ?`<a href="${p.linkImovel||'#'}" target="_blank" class="link-im" onclick="event.stopPropagation()" title="${p.linkImovel||''}">🔗 ${p.nomeImovel}</a>`
