@@ -9,12 +9,131 @@
 // ── SUPABASE via fetch nativo ──
 const SUPA_URL = 'https://vlmskwujxrynkagqogzr.supabase.co';
 const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZsbXNrd3VqeHJ5bmthZ3FvZ3pyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMwODg0MTEsImV4cCI6MjA5ODY2NDQxMX0.e9xXpunusCUSZJ2Tu11vnYjgWFbXZmngRDx8VxXJ89I';
-const SUPA_HEADERS = {
-  'Content-Type': 'application/json',
-  'apikey': SUPA_KEY,
-  'Authorization': 'Bearer ' + SUPA_KEY,
-  'Prefer': 'return=minimal'
-};
+
+// ═══ Autenticação (Supabase Auth) ═══
+let authSession = null; // {access_token, refresh_token, expires_at, user:{email,...}}
+let refreshTimer = null;
+
+function SUPA_HEADERS_FN(){
+  return {
+    'Content-Type': 'application/json',
+    'apikey': SUPA_KEY,
+    'Authorization': 'Bearer ' + (authSession ? authSession.access_token : SUPA_KEY),
+    'Prefer': 'return=minimal'
+  };
+}
+// Mantido por compatibilidade com o código existente que usa SUPA_HEADERS diretamente.
+// É um getter, então sempre reflete o token mais atual da sessão.
+Object.defineProperty(window, 'SUPA_HEADERS', { get: SUPA_HEADERS_FN });
+
+function saveSession(session){
+  authSession = session;
+  localStorage.setItem('sp_session', JSON.stringify(session));
+  document.getElementById('user-email').textContent = session.user?.email || '';
+  scheduleRefresh();
+}
+
+function clearSession(){
+  authSession = null;
+  localStorage.removeItem('sp_session');
+  if(refreshTimer) clearTimeout(refreshTimer);
+}
+
+function scheduleRefresh(){
+  if(refreshTimer) clearTimeout(refreshTimer);
+  if(!authSession) return;
+  // Renova 5 minutos antes de expirar
+  const ms = Math.max((authSession.expires_at*1000 - Date.now()) - 5*60*1000, 10000);
+  refreshTimer = setTimeout(refreshSession, ms);
+}
+
+async function refreshSession(){
+  if(!authSession?.refresh_token) return;
+  try{
+    const res = await fetch(`${SUPA_URL}/auth/v1/token?grant_type=refresh_token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': SUPA_KEY },
+      body: JSON.stringify({ refresh_token: authSession.refresh_token })
+    });
+    if(!res.ok){ logoutAndShowLogin(); return; }
+    const data = await res.json();
+    saveSession({
+      access_token: data.access_token,
+      refresh_token: data.refresh_token,
+      expires_at: data.expires_at,
+      user: data.user
+    });
+  } catch(e){ console.error('Erro ao renovar sessão:', e); }
+}
+
+async function handleLogin(ev){
+  ev.preventDefault();
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const btn = document.getElementById('login-btn');
+  const errBox = document.getElementById('login-error');
+  errBox.classList.remove('show');
+  btn.disabled = true; btn.textContent = 'Entrando...';
+  try{
+    const res = await fetch(`${SUPA_URL}/auth/v1/token?grant_type=password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': SUPA_KEY },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json();
+    if(!res.ok){
+      errBox.textContent = data.error_description || data.msg || 'E-mail ou senha inválidos.';
+      errBox.classList.add('show');
+      btn.disabled = false; btn.textContent = 'Entrar';
+      return false;
+    }
+    saveSession({
+      access_token: data.access_token,
+      refresh_token: data.refresh_token,
+      expires_at: data.expires_at,
+      user: data.user
+    });
+    document.getElementById('login-overlay').classList.add('hidden');
+    startApp();
+  } catch(e){
+    errBox.textContent = 'Erro de conexão. Tente novamente.';
+    errBox.classList.add('show');
+  }
+  btn.disabled = false; btn.textContent = 'Entrar';
+  return false;
+}
+
+function handleLogout(){
+  if(!confirm('Sair da sua conta?')) return;
+  clearSession();
+  location.reload();
+}
+
+function logoutAndShowLogin(){
+  clearSession();
+  document.getElementById('login-overlay').classList.remove('hidden');
+}
+
+function checkSessionAndStart(){
+  const saved = localStorage.getItem('sp_session');
+  if(saved){
+    try{
+      const session = JSON.parse(saved);
+      authSession = session;
+      document.getElementById('user-email').textContent = session.user?.email || '';
+      document.getElementById('login-overlay').classList.add('hidden');
+      // Se o token já está vencido ou perto disso, renova antes de seguir
+      if(session.expires_at*1000 - Date.now() < 5*60*1000){
+        refreshSession().then(startApp);
+      } else {
+        scheduleRefresh();
+        startApp();
+      }
+      return;
+    } catch(e){ /* sessão corrompida, cai para tela de login */ }
+  }
+  document.getElementById('login-overlay').classList.remove('hidden');
+}
 
 const SUPA_TABLE = {
   geral:     'propostas_geral',
@@ -23,12 +142,32 @@ const SUPA_TABLE = {
   santander: 'propostas_santander',
 };
 
+// ═══ Sincronização com Google Sheets (backup automático) ═══
+// Cole aqui a URL do "App da Web" gerada pelo Google Apps Script.
+// Deixe como '' para desativar a sincronização sem quebrar nada.
+const SHEETS_WEBHOOK_URL = 'COLE_AQUI_A_URL_DO_APPS_SCRIPT';
+// Precisa ser IDÊNTICO ao valor de SYNC_SECRET no Apps Script (Código.gs).
+const SHEETS_SYNC_SECRET = 'GPVw3oaoHdEnZWyccKq1u7xPbA4fJbzg4sMnx7f9ixg';
+
+function syncToSheets(aba, propostas){
+  if(!SHEETS_WEBHOOK_URL || SHEETS_WEBHOOK_URL === 'COLE_AQUI_A_URL_DO_APPS_SCRIPT') return;
+  try{
+    fetch(SHEETS_WEBHOOK_URL, {
+      method: 'POST',
+      mode: 'no-cors', // Apps Script não responde com headers de CORS; não precisamos ler a resposta
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ secret: SHEETS_SYNC_SECRET, aba, propostas })
+    }).catch(e => console.error('Sheets sync fetch error:', e));
+  } catch(e){ console.error('Sheets sync error:', e); }
+}
+
 async function supaRequest(method, table, body, params='') {
   try {
     const res = await fetch(`${SUPA_URL}/rest/v1/${table}${params}`, {
       method, headers: SUPA_HEADERS,
       body: body ? JSON.stringify(body) : undefined
     });
+    if(res.status===401){ logoutAndShowLogin(); return null; }
     if(!res.ok){ const e=await res.text(); console.error('Supa error:',method,table,e); return null; }
     if(res.status===204 || res.headers.get('content-length')==='0') return [];
     const text = await res.text();
@@ -53,6 +192,7 @@ async function saveToSupabase(aba, propostas) {
       headers: { ...SUPA_HEADERS, 'Prefer': 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify(rows)
     });
+    if(res.status===401){ logoutAndShowLogin(); return; }
     if(!res.ok) console.error('Save error:', await res.text());
     else console.log('Supabase save OK:', aba, propostas.length, 'propostas');
   } catch(e) { console.error('Save fetch error:', e); }
@@ -66,6 +206,7 @@ async function deleteFromSupabase(aba, id) {
       method: 'DELETE',
       headers: SUPA_HEADERS
     });
+    if(res.status===401){ logoutAndShowLogin(); return false; }
     if(res.ok) { console.log('Delete OK:', id); return true; }
     else {
       const e = await res.text();
@@ -179,6 +320,36 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
   font-size:12px;font-weight:600;font-family:var(--font);background:transparent;color:var(--muted);transition:.15s}
 .nav-btn:hover{color:var(--text);background:var(--bg3)}
 .nav-btn.active{background:var(--accent);color:#fff}
+
+/* ═══ Tela de Login ═══ */
+#login-overlay{
+  position:fixed;inset:0;background:var(--bg);z-index:9999;
+  display:flex;align-items:center;justify-content:center;
+}
+#login-overlay.hidden{display:none}
+.login-card{
+  width:340px;background:var(--bg2);border:1px solid var(--border);
+  border-radius:12px;padding:32px;box-shadow:0 20px 60px rgba(0,0,0,.3);
+}
+.login-card .logo{display:block;margin-bottom:4px;font-size:20px}
+.login-card p{color:var(--muted);font-size:12px;margin-bottom:20px}
+.login-fg{margin-bottom:14px}
+.login-fg label{display:block;font-size:11px;color:var(--muted);margin-bottom:5px}
+.login-fg input{
+  width:100%;background:var(--bg3);border:1px solid var(--border);
+  color:var(--text);border-radius:6px;padding:9px 10px;font-size:13px;
+  font-family:var(--font);outline:none;box-sizing:border-box;
+}
+.login-fg input:focus{border-color:var(--accent)}
+.login-btn{
+  width:100%;background:var(--accent);color:#fff;border:none;
+  border-radius:6px;padding:10px;font-size:13px;font-weight:600;
+  cursor:pointer;margin-top:6px;font-family:var(--font);
+}
+.login-btn:hover{background:#3a57d4}
+.login-btn:disabled{opacity:.6;cursor:not-allowed}
+.login-error{color:var(--red);font-size:12px;margin-top:10px;display:none}
+.login-error.show{display:block}
 #tab-itau.active{background:#f97316}
 #tab-bradesco.active{background:#e55}
 #tab-santander.active{background:#e55;color:#fff!important}
@@ -652,7 +823,26 @@ tbody td{
 </head>
 <body>
 
-<!-- TOP BAR -->
+<!-- ═══ TELA DE LOGIN ═══ -->
+<div id="login-overlay">
+  <div class="login-card">
+    <span class="logo">Smart <small>Gestão de Propostas</small></span>
+    <p>Faça login para acessar as propostas.</p>
+    <form id="login-form" onsubmit="return handleLogin(event)">
+      <div class="login-fg">
+        <label>E-mail</label>
+        <input type="email" id="login-email" autocomplete="username" required>
+      </div>
+      <div class="login-fg">
+        <label>Senha</label>
+        <input type="password" id="login-password" autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="login-btn" id="login-btn">Entrar</button>
+      <div class="login-error" id="login-error"></div>
+    </form>
+  </div>
+</div>
+
 <div class="topbar">
   <div style="display:flex;align-items:center">
     <div class="logo">Smart <small>Gestão de Propostas</small></div>
@@ -671,6 +861,8 @@ tbody td{
     <button class="btn btn-ghost btn-sm" onclick="toggleLegenda()" id="legenda-btn" title="Legenda de cores">🎨</button>
     <button class="btn btn-primary" onclick="openNewPanel()">+ Nova Proposta</button>
     <button class="btn btn-danger btn-sm" onclick="resetTudo()" title="Apagar TODOS os dados" style="opacity:.5;font-size:10px;padding:3px 8px">🗑 Reset</button>
+    <span id="user-email" style="font-size:11px;color:var(--muted);margin-left:8px"></span>
+    <button class="btn btn-ghost btn-sm" onclick="handleLogout()" title="Sair da conta">⏻ Sair</button>
   </div>
 </div>
 
@@ -1213,6 +1405,8 @@ function saveData(){
   localStorage.setItem(SK_C,JSON.stringify(contatos));
   // Salvar no Supabase
   saveToSupabase(abaAtual, propostas);
+  // Espelhar no Google Sheets (backup automático)
+  syncToSheets(abaAtual, propostas);
   saveContatosSupabase(contatos);
 }
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
@@ -3341,9 +3535,12 @@ function resetTudo(){
 }
 
 // ═══ INIT ════════════════════════════════════════════════════════
-loadData();buildThead();renderTable();
-// Garantir aba geral ativa no início
-document.getElementById('tab-geral').classList.add('active');
+function startApp(){
+  loadData();buildThead();renderTable();
+  // Garantir aba geral ativa no início
+  document.getElementById('tab-geral').classList.add('active');
+}
+checkSessionAndStart();
 </script>
 </body>
 </html>
